@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#081321"><meta name="apple-mobile-web-app-capable" content="yes">
+<title>Info Brașov</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:#07101d;color:#f7f9fc}.w{max-width:720px;margin:auto;padding:22px 16px 40px}
+h1{font-size:30px;margin:4px 0}.sub,.note{color:#93a1b5}.sub{margin-bottom:18px}.card{background:#101e2e;border:1px solid #26384e;border-radius:22px;padding:18px;margin:12px 0}
+h2{font-size:18px;margin:0 0 13px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.item{background:#091625;border-radius:15px;padding:13px}
+.label{color:#9aa9bb;font-size:13px}.value{font-size:20px;font-weight:750;margin-top:4px}.row{display:flex;justify-content:space-between;gap:15px;padding:9px 0;border-bottom:1px solid #27384d}.row:last-child{border:0}.note{font-size:12px;margin-top:10px;line-height:1.4}.bad{color:#ffb4ab}.good{color:#b7f7c1}.pill{font-size:11px;border:1px solid #38506c;border-radius:999px;padding:3px 7px;color:#a9bad0}
+</style></head><body><main class="w">
+<h1>📍 INFO BRAȘOV</h1><div class="sub" id="stamp">Actualizare…</div>
+
+<section class="card"><h2>💱 CURS BNR <span class="pill">LIVE</span></h2><div class="grid" id="fx"><div class="item">Se încarcă…</div></div><div class="note" id="fxdate">Sursă: cursul-valutar.ro / BNR</div></section>
+
+<section class="card"><h2>⛽ OMV 13 DECEMBRIE</h2>
+<div class="row"><span>MaxxMotion 95</span><strong>9,97 lei/l</strong></div>
+<div class="row"><span>MaxxMotion 100 Plus</span><strong>10,54 lei/l</strong></div>
+<div class="row"><span>OMV Diesel</span><strong>10,43 lei/l</strong></div>
+<div class="row"><span>MaxxMotion Diesel</span><strong>11,24 lei/l</strong></div>
+<div class="note">Ultimele valori publice identificate pentru OMV Brașov 3, Bd. 13 Decembrie 1–3. Nu sunt etichetate LIVE până nu există o sursă stabilă accesibilă din browser.</div></section>
+
+<section class="card"><h2>📈 FONDURI ING</h2>
+<div class="row"><span>🇷🇴 Romania Equity</span><strong>5.031,04 RON</strong></div>
+<div class="row"><span>Randament 1 lună</span><strong>-3,92%</strong></div>
+<div class="row"><span>Randament YTD</span><strong>+29,17%*</strong></div>
+<div class="row"><span>Randament 1 an</span><strong>+54,08%</strong></div>
+<div class="note">NAV: 11.09.2026. 1 lună/1 an: până la 11.09.2026. *YTD disponibil la 31.08.2026.</div>
+<br>
+<div class="row"><span>📊 ING Dinamic RON</span><strong>2.099,64 RON</strong></div>
+<div class="row"><span>Randament 1 lună</span><strong>-2,21%*</strong></div>
+<div class="row"><span>Randament YTD</span><strong>+8,41%**</strong></div>
+<div class="row"><span>Randament 1 an</span><strong>+13,67%*</strong></div>
+<div class="note">NAV: 14.09.2026. *Randamente la 11.09.2026. **YTD raportat la 13.09.2026. Valorile fondurilor sunt datate, nu prezentate fals ca LIVE.</div></section>
+
+<section class="card"><h2>🌤 BRAȘOV <span class="pill">LIVE</span></h2><div id="weather">Se încarcă…</div><div class="note">Sursă: Open‑Meteo</div></section>
+</main>
+<script>
+const fmt=n=>Number(n).toLocaleString("ro-RO",{minimumFractionDigits:4,maximumFractionDigits:4});
+document.getElementById("stamp").textContent="Actualizat: "+new Intl.DateTimeFormat("ro-RO",{dateStyle:"medium",timeStyle:"short"}).format(new Date());
+fetch("https://cursul-valutar.ro/api/rates.json").then(r=>{if(!r.ok)throw 0;return r.json()}).then(d=>{
+ const flags={EUR:"🇪🇺",USD:"🇺🇸",GBP:"🇬🇧",CHF:"🇨🇭"}, wanted=["EUR","USD","GBP","CHF"];
+ document.getElementById("fx").innerHTML=wanted.map(c=>{const x=d.rates.find(v=>v.currency===c);return `<div class="item"><div class="label">${flags[c]} ${c}</div><div class="value">${x?fmt(x.perUnit):"—"} lei</div></div>`}).join("");
+ document.getElementById("fxdate").textContent="BNR: "+(d.date||"ultima publicare");
+}).catch(()=>document.getElementById("fx").innerHTML='<div class="bad">BNR nu a putut fi încărcat.</div>');
+
+const wc={0:"Senin",1:"Mai mult senin",2:"Parțial noros",3:"Noros",45:"Ceață",48:"Ceață",51:"Burniță",53:"Burniță",55:"Burniță",61:"Ploaie",63:"Ploaie",65:"Ploaie puternică",71:"Ninsoare",73:"Ninsoare",75:"Ninsoare puternică",80:"Averse",81:"Averse",82:"Averse puternice",95:"Furtună",96:"Furtună",99:"Furtună"};
+fetch("https://api.open-meteo.com/v1/forecast?latitude=45.6579&longitude=25.6012&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Europe%2FBucharest&forecast_days=1")
+.then(r=>{if(!r.ok)throw 0;return r.json()}).then(w=>{
+ document.getElementById("weather").innerHTML=`<div class="grid"><div class="item"><div class="label">Temperatură</div><div class="value">${Math.round(w.current.temperature_2m)}°C</div></div><div class="item"><div class="label">Condiții</div><div class="value">${wc[w.current.weather_code]||"—"}</div></div></div><div class="row"><span>Min / Max</span><strong>${Math.round(w.daily.temperature_2m_min[0])}° / ${Math.round(w.daily.temperature_2m_max[0])}°</strong></div><div class="row"><span>Precipitații</span><strong>${w.daily.precipitation_probability_max[0]}%</strong></div>`;
+}).catch(()=>document.getElementById("weather").innerHTML='<span class="bad">Vremea nu a putut fi încărcată.</span>');
+</script></body></html>
