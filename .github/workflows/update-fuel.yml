@@ -16,7 +16,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download GazOnline and update fuel.json
+      - name: Find OMV Gara and update fuel.json
         shell: python
         run: |
           import urllib.request
@@ -24,60 +24,116 @@ jobs:
           import json
           from datetime import datetime
 
-          url = "https://www.gazonline.ro/cautare.php?jud_cod=BV&loc_id=2000&wsr=6b07df789c50cf06c7350ec1cdac0a0e"
+          base_url = "https://www.gazonline.ro/cautare.php"
+          common = "jud_cod=BV&loc_id=2000&wsr=6b07df789c50cf06c7350ec1cdac0a0e"
 
-          req = urllib.request.Request(
-              url,
-              headers={"User-Agent": "Mozilla/5.0"}
-          )
+          station_text = None
 
-          html = urllib.request.urlopen(req, timeout=30).read()
-          text = html.decode("iso-8859-2", errors="ignore")
+          for page in range(1, 5):
 
-          text = re.sub(r"<script.*?</script>", " ", text,
-                        flags=re.I | re.S)
-          text = re.sub(r"<style.*?</style>", " ", text,
-                        flags=re.I | re.S)
-          text = re.sub(r"<[^>]+>", " ", text)
-          text = text.replace("&nbsp;", " ")
-          text = re.sub(r"\s+", " ", text)
+              if page == 1:
+                  url = f"{base_url}?{common}"
+              else:
+                  url = f"{base_url}?{common}&pag={page}"
 
-          marker = "Bd. Garii 7A"
-          pos = text.find(marker)
+              print(f"Checking page {page}: {url}")
 
-          if pos == -1:
-              raise RuntimeError("OMV 13 Decembrie nu a fost gasit.")
+              req = urllib.request.Request(
+                  url,
+                  headers={
+                      "User-Agent": "Mozilla/5.0",
+                      "Accept-Language": "ro-RO,ro;q=0.9"
+                  }
+              )
 
-          section = text[max(0, pos-500):pos+1000]
+              html = urllib.request.urlopen(
+                  req,
+                  timeout=30
+              ).read()
 
+              text = html.decode(
+                  "iso-8859-2",
+                  errors="ignore"
+              )
+
+              text = re.sub(
+                  r"<script.*?</script>",
+                  " ",
+                  text,
+                  flags=re.I | re.S
+              )
+
+              text = re.sub(
+                  r"<style.*?</style>",
+                  " ",
+                  text,
+                  flags=re.I | re.S
+              )
+
+              text = re.sub(r"<[^>]+>", " ", text)
+              text = text.replace("&nbsp;", " ")
+              text = re.sub(r"\s+", " ", text)
+
+              # Cautam statia OMV de la Gara.
+              # Folosim telefonul ca identificator unic,
+              # pentru a evita probleme cu diacriticele.
+              marker = "0372.868918"
+
+              pos = text.find(marker)
+
+              if pos != -1:
+                  print(f"OMV Gara found on page {page}")
+                  station_text = text[
+                      max(0, pos - 700):
+                      pos + 1200
+                  ]
+                  break
+
+          if station_text is None:
+              raise RuntimeError(
+                  "OMV Gara nu a fost gasit pe paginile 1-4."
+              )
+
+          # Gasim data/ora si cele 4 preturi OMV.
           m = re.search(
-              r"(\d{2}/\d{2}/\d{2})\s+(\d{2}:\d{2})"
-              r".*?(\d+\.\d+)\s+-\s+"
+              r"(\d{2}/\d{2}/\d{2})\s+"
+              r"(\d{2}:\d{2})\s+"
+              r"(\d+\.\d+)\s+-\s+"
               r"(\d+\.\d+)\s+"
               r"(\d+\.\d+)\s+"
               r"(\d+\.\d+)",
-              section
+              station_text
           )
 
           if not m:
-              raise RuntimeError("Preturile nu au putut fi extrase.")
+              print(station_text)
+              raise RuntimeError(
+                  "Preturile OMV Gara nu au putut fi extrase."
+              )
 
           date, hour, maxx100, maxx95, maxxdiesel, diesel = m.groups()
 
-          prices = list(map(float, [
-              maxx100, maxx95, maxxdiesel, diesel
-          ]))
+          prices = [
+              float(maxx100),
+              float(maxx95),
+              float(maxxdiesel),
+              float(diesel)
+          ]
 
+          # Protectie impotriva unor valori gresite.
           if not all(5 < p < 20 for p in prices):
-              raise RuntimeError("Preturi suspecte. fuel.json nu este modificat.")
+              raise RuntimeError(
+                  f"Preturi suspecte: {prices}"
+              )
 
           updated = datetime.strptime(
-              date + " " + hour, "%d/%m/%y %H:%M"
+              date + " " + hour,
+              "%d/%m/%y %H:%M"
           ).strftime("%d.%m.%Y %H:%M")
 
           data = {
               "source": "GazOnline",
-              "station": "OMV Brasov 3, Bd. 13 Decembrie 1-3",
+              "station": "OMV Brasov - Gara, Bd. Garii 7A",
               "updated": updated,
               "prices": {
                   "super95": float(maxx95),
@@ -87,20 +143,31 @@ jobs:
               }
           }
 
-          with open("fuel.json", "w", encoding="utf-8") as f:
-              json.dump(data, f, ensure_ascii=False, indent=2)
+          with open(
+              "fuel.json",
+              "w",
+              encoding="utf-8"
+          ) as f:
+              json.dump(
+                  data,
+                  f,
+                  ensure_ascii=False,
+                  indent=2
+              )
 
-          print(data)
+          print("fuel.json updated successfully:")
+          print(json.dumps(data, indent=2))
 
       - name: Commit updated prices
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           git add fuel.json
 
           if git diff --cached --quiet; then
             echo "No fuel price changes."
           else
-            git commit -m "Update OMV fuel prices"
+            git commit -m "Update OMV Gara fuel prices"
             git push
           fi
