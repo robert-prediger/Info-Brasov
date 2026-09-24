@@ -27,8 +27,8 @@ jobs:
           base_url = "https://www.gazonline.ro/cautare.php"
           common = "jud_cod=BV&loc_id=2000&wsr=6b07df789c50cf06c7350ec1cdac0a0e"
 
-          phone = "0372.868918"
-          station_html = None
+          marker = "0372.868918"
+          station_text = None
 
           for page in range(1, 5):
 
@@ -52,210 +52,159 @@ jobs:
                   timeout=30
               ).read()
 
-              html = raw.decode(
+              text = raw.decode(
                   "iso-8859-2",
                   errors="ignore"
               )
 
-              pos = html.find(phone)
-
-              if pos == -1:
-                  continue
-
-              print(f"OMV Gara found on page {page}")
-
-              # Izolam doar statia OMV Gara.
-              # Urmatoarea aparitie "OMV - Brasov"
-              # marcheaza urmatoarea statie.
-              start = html.rfind(
-                  "OMV - Brasov",
-                  0,
-                  pos
+              text = re.sub(
+                  r"<script.*?</script>",
+                  " ",
+                  text,
+                  flags=re.I | re.S
               )
 
-              if start == -1:
-                  start = max(0, pos - 2000)
-
-              end = html.find(
-                  "OMV - Brasov",
-                  pos + len(phone)
+              text = re.sub(
+                  r"<style.*?</style>",
+                  " ",
+                  text,
+                  flags=re.I | re.S
               )
 
-              if end == -1:
-                  end = min(
-                      len(html),
-                      pos + 10000
+              text = re.sub(r"<[^>]+>", " ", text)
+              text = text.replace("&nbsp;", " ")
+              text = re.sub(r"\s+", " ", text)
+
+              pos = text.find(marker)
+
+              if pos != -1:
+
+                  print(
+                      f"OMV Gara found on page {page}"
                   )
 
-              station_html = html[start:end]
-              break
+                  start = text.rfind(
+                      "OMV - Brasov",
+                      0,
+                      pos
+                  )
 
-          if station_html is None:
+                  if start == -1:
+                      start = max(0, pos - 500)
+
+                  end = text.find(
+                      "OMV - Brasov",
+                      pos + len(marker)
+                  )
+
+                  if end == -1:
+                      end = min(
+                          len(text),
+                          pos + 2500
+                      )
+
+                  station_text = text[start:end]
+
+                  break
+
+          if station_text is None:
               raise RuntimeError(
                   "OMV Gara nu a fost gasit."
               )
 
-          # GazOnline:
-          #
-          # B+  = MaxxMotion 100 Plus
-          # B   = benzina standard / -
-          # B95 = MaxxMotion 95
-          # M+  = MaxxMotion Diesel
-          # M   = OMV Diesel
-          # GPL = -
-          #
-          # Extragem toate celulele din randul statiei.
+          print("STATION:")
+          print(station_text)
 
-          cells = re.findall(
-              r"<td[^>]*>(.*?)</td>",
-              station_html,
-              flags=re.I | re.S
+          # Preturile GazOnline apar dupa UnTip()">
+          # Ordinea pentru OMV Gara este:
+          # 1 MaxxMotion 100 Plus
+          # 2 MaxxMotion 95
+          # 3 MaxxMotion Diesel
+          # 4 OMV Diesel
+
+          matches = re.findall(
+              r'UnTip\(\)">\s*(\d+\.\d+)',
+              station_text
           )
 
-          clean_cells = []
+          prices = []
 
-          for cell in cells:
+          for value in matches:
 
-              cell = re.sub(
-                  r"<[^>]+>",
-                  " ",
-                  cell
-              )
+              number = float(value)
 
-              cell = cell.replace(
-                  "&nbsp;",
-                  " "
-              )
+              if 5 < number < 20:
+                  prices.append(number)
 
-              cell = re.sub(
-                  r"\s+",
-                  " ",
-                  cell
-              ).strip()
+          print("PRICES FOUND:", prices)
 
-              clean_cells.append(cell)
-
-          print("CELLS FOUND:")
-          for i, cell in enumerate(clean_cells):
-              print(i, repr(cell))
-
-          # Cautam celulele care contin preturi
-          # sau "-" in ordinea coloanelor GazOnline.
-
-          fuel_cells = []
-
-          for cell in clean_cells:
-
-              if re.fullmatch(
-                  r"\d{1,2}\.\d{2}",
-                  cell
-              ):
-                  fuel_cells.append(cell)
-
-              elif cell == "-":
-                  fuel_cells.append(cell)
-
-          print("FUEL CELLS:", fuel_cells)
-
-          # Trebuie sa avem cele 6 coloane:
-          # B+, B, B95, M+, M, GPL
-
-          sequence = None
-
-          for i in range(
-              max(0, len(fuel_cells) - 5)
-          ):
-
-              candidate = fuel_cells[i:i + 6]
-
-              if len(candidate) != 6:
-                  continue
-
-              # Pentru OMV Gara ne asteptam ca
-              # B si GPL sa fie "-"
-              if (
-                  candidate[1] == "-"
-                  and candidate[5] == "-"
-              ):
-                  sequence = candidate
-                  break
-
-          if sequence is None:
-              print(station_html)
+          if len(prices) < 4:
               raise RuntimeError(
-                  "Nu am putut identifica cele 6 coloane "
-                  "de carburant pentru OMV Gara."
+                  f"Au fost gasite doar aceste "
+                  f"preturi: {prices}"
               )
 
-          print("COLUMN SEQUENCE:", sequence)
+          maxx100 = prices[0]
+          super95 = prices[1]
+          maxxdiesel = prices[2]
+          diesel = prices[3]
 
-          b_plus = sequence[0]
-          b = sequence[1]
-          b95 = sequence[2]
-          m_plus = sequence[3]
-          m = sequence[4]
-          gpl = sequence[5]
+          # Protectie suplimentara:
+          # benzina premium trebuie sa fie
+          # >= benzina 95, iar diesel premium
+          # >= diesel standard.
 
-          maxx100 = float(b_plus)
-          super95 = float(b95)
-          maxxdiesel = float(m_plus)
-          diesel = float(m)
-
-          prices = [
-              maxx100,
-              super95,
-              maxxdiesel,
-              diesel
-          ]
-
-          if not all(
-              5 < price < 20
-              for price in prices
-          ):
+          if maxx100 < super95:
               raise RuntimeError(
-                  f"Preturi suspecte: {prices}"
+                  "Ordinea preturilor benzinei "
+                  "pare incorecta."
               )
 
-          # Cautam cea mai recenta data/ora
-          # afisata in blocul statiei.
+          if maxxdiesel < diesel:
+              raise RuntimeError(
+                  "Ordinea preturilor diesel "
+                  "pare incorecta."
+              )
 
-          dates = re.findall(
+          # Extragem cea mai recenta data/ora
+          # din blocul statiei.
+
+          date_matches = re.findall(
               r"(\d{2}/\d{2}/(?:\d{2}|\d{4}))"
-              r"\s+"
-              r"(\d{2}:\d{2})",
-              station_html
+              r"\s+(\d{2}:\d{2})",
+              station_text
           )
 
-          if dates:
-              parsed_dates = []
+          parsed_dates = []
 
-              for date, hour in dates:
+          for date, hour in date_matches:
 
-                  year = date.split("/")[-1]
+              year = date.split("/")[-1]
 
-                  fmt = (
-                      "%d/%m/%Y %H:%M"
-                      if len(year) == 4
-                      else "%d/%m/%y %H:%M"
-                  )
+              fmt = (
+                  "%d/%m/%Y %H:%M"
+                  if len(year) == 4
+                  else "%d/%m/%y %H:%M"
+              )
 
-                  try:
-                      dt = datetime.strptime(
+              try:
+                  parsed_dates.append(
+                      datetime.strptime(
                           f"{date} {hour}",
                           fmt
                       )
-                      parsed_dates.append(dt)
-                  except ValueError:
-                      pass
-
-              if parsed_dates:
-                  newest = max(parsed_dates)
-
-                  updated = newest.strftime(
-                      "%d.%m.%Y %H:%M"
                   )
-              else:
-                  updated = "necunoscut"
+              except ValueError:
+                  pass
+
+          if parsed_dates:
+
+              updated = max(
+                  parsed_dates
+              ).strftime(
+                  "%d.%m.%Y %H:%M"
+              )
+
           else:
               updated = "necunoscut"
 
@@ -284,7 +233,7 @@ jobs:
                   indent=2
               )
 
-          print("SUCCESS")
+          print("SUCCESS:")
           print(
               json.dumps(
                   data,
