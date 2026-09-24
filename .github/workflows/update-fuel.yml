@@ -42,7 +42,7 @@ jobs:
           text = text.replace("&nbsp;", " ")
           text = re.sub(r"\s+", " ", text)
 
-          marker = "13 Decembrie"
+          marker = "Bd. Garii 7A"
           pos = text.find(marker)
 
           if pos == -1:
