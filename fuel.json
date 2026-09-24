@@ -7,5 +7,17 @@
     "maxx100": 10.62,
     "diesel": 10.97,
     "maxxdiesel": 11.78
+  },
+  "previous": {
+    "super95": 10.05,
+    "maxx100": 10.62,
+    "diesel": 10.97,
+    "maxxdiesel": 11.78
+  },
+  "changes": {
+    "super95": 0.0,
+    "maxx100": 0.0,
+    "diesel": 0.0,
+    "maxxdiesel": 0.0
   }
 }
