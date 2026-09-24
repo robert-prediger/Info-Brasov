@@ -22,6 +22,7 @@ jobs:
           import urllib.request
           import re
           import json
+          import os
           from datetime import datetime
 
           base_url = "https://www.gazonline.ro/cautare.php"
@@ -104,23 +105,12 @@ jobs:
                       )
 
                   station_text = text[start:end]
-
                   break
 
           if station_text is None:
               raise RuntimeError(
                   "OMV Gara nu a fost gasit."
               )
-
-          print("STATION:")
-          print(station_text)
-
-          # Preturile GazOnline apar dupa UnTip()">
-          # Ordinea pentru OMV Gara este:
-          # 1 MaxxMotion 100 Plus
-          # 2 MaxxMotion 95
-          # 3 MaxxMotion Diesel
-          # 4 OMV Diesel
 
           matches = re.findall(
               r'UnTip\(\)">\s*(\d+\.\d+)',
@@ -140,8 +130,7 @@ jobs:
 
           if len(prices) < 4:
               raise RuntimeError(
-                  f"Au fost gasite doar aceste "
-                  f"preturi: {prices}"
+                  f"Au fost gasite doar aceste preturi: {prices}"
               )
 
           maxx100 = prices[0]
@@ -149,25 +138,105 @@ jobs:
           maxxdiesel = prices[2]
           diesel = prices[3]
 
-          # Protectie suplimentara:
-          # benzina premium trebuie sa fie
-          # >= benzina 95, iar diesel premium
-          # >= diesel standard.
-
           if maxx100 < super95:
               raise RuntimeError(
-                  "Ordinea preturilor benzinei "
-                  "pare incorecta."
+                  "Ordinea preturilor benzinei pare incorecta."
               )
 
           if maxxdiesel < diesel:
               raise RuntimeError(
-                  "Ordinea preturilor diesel "
-                  "pare incorecta."
+                  "Ordinea preturilor diesel pare incorecta."
               )
 
-          # Extragem cea mai recenta data/ora
-          # din blocul statiei.
+          current_prices = {
+              "super95": super95,
+              "maxx100": maxx100,
+              "diesel": diesel,
+              "maxxdiesel": maxxdiesel
+          }
+
+          # Citim fuel.json existent pentru a pastra
+          # ultima valoare DIFERITA pentru fiecare produs.
+
+          old_data = {}
+
+          if os.path.exists("fuel.json"):
+
+              try:
+                  with open(
+                      "fuel.json",
+                      "r",
+                      encoding="utf-8"
+                  ) as f:
+                      old_data = json.load(f)
+
+              except Exception:
+                  old_data = {}
+
+          old_prices = old_data.get(
+              "prices",
+              {}
+          )
+
+          old_previous = old_data.get(
+              "previous",
+              {}
+          )
+
+          previous = {}
+
+          for key, current in current_prices.items():
+
+              old_current = old_prices.get(key)
+
+              old_prev = old_previous.get(key)
+
+              if isinstance(
+                  old_current,
+                  (int, float)
+              ):
+
+                  if abs(
+                      float(current) -
+                      float(old_current)
+                  ) > 0.0001:
+
+                      # Pretul tocmai s-a schimbat.
+                      # Vechiul pret devine referinta.
+                      previous[key] = float(
+                          old_current
+                      )
+
+                  elif isinstance(
+                      old_prev,
+                      (int, float)
+                  ):
+
+                      # Pretul nu s-a schimbat.
+                      # Pastram referinta existenta.
+                      previous[key] = float(
+                          old_prev
+                      )
+
+                  else:
+                      previous[key] = float(
+                          current
+                      )
+
+              else:
+                  previous[key] = float(
+                      current
+                  )
+
+          changes = {}
+
+          for key, current in current_prices.items():
+
+              changes[key] = round(
+                  float(current) -
+                  float(previous[key]),
+                  2
+              )
 
           date_matches = re.findall(
               r"(\d{2}/\d{2}/(?:\d{2}|\d{4}))"
@@ -212,12 +281,9 @@ jobs:
               "source": "GazOnline",
               "station": "OMV Brasov - Gara, Bd. Garii 7A",
               "updated": updated,
-              "prices": {
-                  "super95": super95,
-                  "maxx100": maxx100,
-                  "diesel": diesel,
-                  "maxxdiesel": maxxdiesel
-              }
+              "prices": current_prices,
+              "previous": previous,
+              "changes": changes
           }
 
           with open(
