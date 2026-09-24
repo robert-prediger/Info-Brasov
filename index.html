@@ -65,18 +65,54 @@ fetch("https://cursul-valutar.ro/api/rates.json").then(r=>{if(!r.ok)throw 0;retu
 
 /* Dacă există fuel.json în repository, valorile de mai jos se actualizează automat din el.
    Astfel pagina nu depinde de CORS sau de scraping direct din browser. */
-fetch("./fuel.json?ts="+Date.now(), {cache:"no-store"}).then(r=>{if(!r.ok)throw 0;return r.json()}).then(f=>{
- const p=f.prices||{};
- const rows=[
-   ["OMV Super 95",p.super95],
-   ["MaxxMotion 100 Plus",p.maxx100],
-   ["OMV Diesel",p.diesel],
-   ["MaxxMotion Diesel",p.maxxdiesel]
- ].filter(x=>Number.isFinite(Number(x[1])));
- if(rows.length){
-   document.getElementById("fuel").innerHTML=rows.map(([n,v])=>`<div class="row"><span>${n}</span><strong>${Number(v).toLocaleString("ro-RO",{minimumFractionDigits:2,maximumFractionDigits:2})} lei/l</strong></div>`).join("");
- }
- document.getElementById("fueldate").textContent=`Sursă: ${f.source||"GazOnline"} • OMV Brașov, Bd. 13 Decembrie 1–3${f.updated?" • actualizat "+f.updated:""}`;
+fetch("./fuel.json?ts="+Date.now(), {cache:"no-store"})
+.then(r=>r.json()).then(f=>{
+  const p=f.prices||{};
+  const ch=f.changes||{};
+
+  const rows=[
+    ["OMV Super 95",p.super95,ch.super95],
+    ["MaxxMotion 100 Plus",p.maxx100,ch.maxx100],
+    ["OMV Diesel",p.diesel,ch.diesel],
+    ["MaxxMotion Diesel",p.maxxdiesel,ch.maxxdiesel]
+  ].filter(x=>Number.isFinite(Number(x[1])));
+
+  if(rows.length){
+    document.getElementById("fuel").innerHTML=rows.map(x=>{
+      const price=Number(x[1]);
+      const change=Number(x[2])||0;
+
+      let cls="fxflat";
+      let arrow="→";
+      let sign="";
+
+      if(change>0){
+        cls="fxup";
+        arrow="▲";
+        sign="+";
+      }else if(change<0){
+        cls="fxdown";
+        arrow="▼";
+      }
+
+      const changeText=
+        `${arrow} ${sign}${change.toFixed(2).replace(".",",")}`;
+
+      return `<div class="item">
+        <span>${x[0]}</span>
+        <div style="text-align:right">
+          <strong>${price.toFixed(2).replace(".",",")} lei/l</strong>
+          <div class="${cls}" style="font-size:13px;margin-top:3px">
+            ${changeText}
+          </div>
+        </div>
+      </div>`;
+    }).join("");
+  }
+
+  document.getElementById("fueldate").textContent=
+    `Sursă: ${f.source||"GazOnline"} • ${f.station||"OMV Brașov – Gară, Bd. Gării 7A"} • actualizat ${f.updated||"—"}`;
+
 }).catch(()=>{});
 
 const wc={0:"Senin",1:"Mai mult senin",2:"Parțial noros",3:"Noros",45:"Ceață",48:"Ceață",51:"Burniță",53:"Burniță",55:"Burniță",61:"Ploaie",63:"Ploaie",65:"Ploaie puternică",71:"Ninsoare",73:"Ninsoare",75:"Ninsoare puternică",80:"Averse",81:"Averse",82:"Averse puternice",95:"Furtună",96:"Furtună",99:"Furtună"};
