@@ -19,12 +19,14 @@ h2{font-size:18px;margin:0 0 13px}.grid{display:grid;grid-template-columns:1fr 1
 
 <section class="card"><h2>💱 CURS BNR <span class="pill">LIVE</span></h2><div class="grid" id="fx"><div class="item">Se încarcă…</div></div><div class="note" id="fxdate">Sursă: cursul-valutar.ro / BNR</div></section>
 
-<section class="card"><h2>⛽ OMV 13 DECEMBRIE</h2>
-<div class="row"><span>MaxxMotion 95</span><strong>9,97 lei/l</strong></div>
-<div class="row"><span>MaxxMotion 100 Plus</span><strong>10,54 lei/l</strong></div>
-<div class="row"><span>OMV Diesel</span><strong>10,43 lei/l</strong></div>
-<div class="row"><span>MaxxMotion Diesel</span><strong>11,24 lei/l</strong></div>
-<div class="note">Ultimele valori publice identificate pentru OMV Brașov 3, Bd. 13 Decembrie 1–3. Nu sunt etichetate LIVE până nu există o sursă stabilă accesibilă din browser.</div></section>
+<section class="card"><h2>⛽ OMV 13 DECEMBRIE <span class="pill" id="fuelpill">ACTUALIZAT</span></h2>
+<div id="fuel">
+<div class="row"><span>OMV Super 95</span><strong>10,05 lei/l</strong></div>
+<div class="row"><span>MaxxMotion 100 Plus</span><strong>10,62 lei/l</strong></div>
+<div class="row"><span>OMV Diesel</span><strong>10,97 lei/l</strong></div>
+<div class="row"><span>MaxxMotion Diesel</span><strong>11,78 lei/l</strong></div>
+</div>
+<div class="note" id="fueldate">Sursă: GazOnline • OMV Brașov, Bd. 13 Decembrie 1–3 • actualizat 23.09.2026 13:22</div></section>
 
 <section class="card"><h2>📈 FONDURI ING</h2>
 <div class="row"><span>🇷🇴 Romania Equity</span><strong>5.031,04 RON</strong></div>
@@ -44,6 +46,7 @@ h2{font-size:18px;margin:0 0 13px}.grid{display:grid;grid-template-columns:1fr 1
 <script>
 const fmt=n=>Number(n).toLocaleString("ro-RO",{minimumFractionDigits:4,maximumFractionDigits:4});
 document.getElementById("stamp").textContent="Actualizat: "+new Intl.DateTimeFormat("ro-RO",{dateStyle:"medium",timeStyle:"short"}).format(new Date());
+
 fetch("https://cursul-valutar.ro/api/rates.json").then(r=>{if(!r.ok)throw 0;return r.json()}).then(d=>{
  const flags={EUR:"🇪🇺",USD:"🇺🇸",GBP:"🇬🇧",CHF:"🇨🇭"}, wanted=["EUR","USD","GBP","CHF"];
  document.getElementById("fx").innerHTML=wanted.map(c=>{
@@ -58,6 +61,22 @@ fetch("https://cursul-valutar.ro/api/rates.json").then(r=>{if(!r.ok)throw 0;retu
  }).join("");
  document.getElementById("fxdate").textContent="BNR: "+(d.date||"ultima publicare")+" • variație față de precedenta zi bancară";
 }).catch(()=>document.getElementById("fx").innerHTML='<div class="bad">BNR nu a putut fi încărcat.</div>');
+
+/* Dacă există fuel.json în repository, valorile de mai jos se actualizează automat din el.
+   Astfel pagina nu depinde de CORS sau de scraping direct din browser. */
+fetch("./fuel.json?ts="+Date.now(), {cache:"no-store"}).then(r=>{if(!r.ok)throw 0;return r.json()}).then(f=>{
+ const p=f.prices||{};
+ const rows=[
+   ["OMV Super 95",p.super95],
+   ["MaxxMotion 100 Plus",p.maxx100],
+   ["OMV Diesel",p.diesel],
+   ["MaxxMotion Diesel",p.maxxdiesel]
+ ].filter(x=>Number.isFinite(Number(x[1])));
+ if(rows.length){
+   document.getElementById("fuel").innerHTML=rows.map(([n,v])=>`<div class="row"><span>${n}</span><strong>${Number(v).toLocaleString("ro-RO",{minimumFractionDigits:2,maximumFractionDigits:2})} lei/l</strong></div>`).join("");
+ }
+ document.getElementById("fueldate").textContent=`Sursă: ${f.source||"GazOnline"} • OMV Brașov, Bd. 13 Decembrie 1–3${f.updated?" • actualizat "+f.updated:""}`;
+}).catch(()=>{});
 
 const wc={0:"Senin",1:"Mai mult senin",2:"Parțial noros",3:"Noros",45:"Ceață",48:"Ceață",51:"Burniță",53:"Burniță",55:"Burniță",61:"Ploaie",63:"Ploaie",65:"Ploaie puternică",71:"Ninsoare",73:"Ninsoare",75:"Ninsoare puternică",80:"Averse",81:"Averse",82:"Averse puternice",95:"Furtună",96:"Furtună",99:"Furtună"};
 fetch("https://api.open-meteo.com/v1/forecast?latitude=45.6579&longitude=25.6012&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Europe%2FBucharest&forecast_days=1")
