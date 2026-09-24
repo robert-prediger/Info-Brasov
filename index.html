@@ -15,7 +15,41 @@
 h1{font-size:30px;margin:4px 0}.sub,.note{color:#93a1b5}.sub{margin-bottom:18px}.card{background:#101e2e;border:1px solid #26384e;border-radius:22px;padding:18px;margin:12px 0}
 h2{font-size:18px;margin:0 0 13px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.item{background:#091625;border-radius:15px;padding:13px}
 .label{color:#9aa9bb;font-size:13px}.value{font-size:20px;font-weight:750;margin-top:4px}.row{display:flex;justify-content:space-between;gap:15px;padding:9px 0;border-bottom:1px solid #27384d}.row:last-child{border:0}.note{font-size:12px;margin-top:10px;line-height:1.4}.bad{color:#ffb4ab}.good{color:#b7f7c1}.fxchange{font-size:13px;font-weight:700;margin-top:5px}.fxup{color:#55d66b}.fxdown{color:#ff625f}.fxflat{color:#a9bad0}.pill{font-size:11px;border:1px solid #38506c;border-radius:999px;padding:3px 7px;color:#a9bad0}
-</style></head><body><main class="w">
+#fuel{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+
+#fuel .fxcard{
+  background:#071725;
+  border-radius:16px;
+  padding:14px;
+  min-width:0;
+}
+
+#fuel .label{
+  color:#9aa9bb;
+  font-size:13px;
+  margin-bottom:8px;
+  white-space:nowrap;
+}
+
+#fuel .value{
+  font-size:20px;
+  font-weight:800;
+  white-space:nowrap;
+}
+
+#fuel .fxup,
+#fuel .fxdown,
+#fuel .fxflat{
+  margin-top:4px;
+  font-size:13px;
+  font-weight:700;
+}
+</style>
+</head><body><main class="w">
 <h1>📍 INFO BRAȘOV</h1><div class="sub" id="stamp">Actualizare…</div>
 
 <section class="card"><h2>💱 CURS BNR <span class="pill">LIVE</span></h2><div class="grid" id="fx"><div class="item">Se încarcă…</div></div><div class="note" id="fxdate">Sursă: cursul-valutar.ro / BNR</div></section>
@@ -77,38 +111,34 @@ fetch("./fuel.json?ts="+Date.now(), {cache:"no-store"})
     ["MaxxMotion Diesel",p.maxxdiesel,ch.maxxdiesel]
   ].filter(x=>Number.isFinite(Number(x[1])));
 
-  if(rows.length){
-    document.getElementById("fuel").innerHTML=rows.map(x=>{
-      const price=Number(x[1]);
-      const change=Number(x[2])||0;
+    if(rows.length){
+  document.getElementById("fuel").innerHTML=rows.map(x=>{
+    const price=Number(x[1]);
+    const change=Number(x[2])||0;
 
-      let cls="fxflat";
-      let arrow="→";
-      let sign="";
+    let cls="fxflat";
+    let arrow="→";
+    let sign="";
 
-      if(change>0){
-        cls="fxup";
-        arrow="▲";
-        sign="+";
-      }else if(change<0){
-        cls="fxdown";
-        arrow="▼";
-      }
+    if(change>0){
+      cls="fxup";
+      arrow="▲";
+      sign="+";
+    }else if(change<0){
+      cls="fxdown";
+      arrow="▼";
+    }
 
-      const changeText=
-        `${arrow} ${sign}${change.toFixed(2).replace(".",",")}`;
+    const changeText=
+      `${arrow} ${sign}${change.toFixed(2).replace(".",",")}`;
 
-      return `<div class="item">
-        <span>${x[0]}</span>
-        <div style="text-align:right">
-          <strong>${price.toFixed(2).replace(".",",")} lei/l</strong>
-          <div class="${cls}" style="font-size:13px;margin-top:3px">
-            ${changeText}
-          </div>
-        </div>
-      </div>`;
-    }).join("");
-  }
+    return `<div class="fxcard">
+      <div class="label">${x[0]}</div>
+      <div class="value">${price.toFixed(2).replace(".",",")} lei/l</div>
+      <div class="${cls}">${changeText}</div>
+    </div>`;
+  }).join("");
+}
 
   document.getElementById("fueldate").textContent=
     `Sursă: ${f.source||"GazOnline"} • ${f.station||"OMV Brașov – Gară, Bd. Gării 7A"} • actualizat ${f.updated||"—"}`;
