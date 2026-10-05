@@ -1,25 +1,19 @@
 {
-  "updated": "05.10.2026",
+  "updated": "02.10.2026",
   "funds": [
     {
       "name": "Romania Equity",
       "isin": "LU0345402092",
       "currency": "RON",
-      "nav": null,
-      "change": null,
-      "month": null,
-      "ytd": null,
-      "year": null
+      "nav": 4899.42,
+      "change": 0.66
     },
     {
       "name": "ING Dinamic RON",
       "isin": "LU1505916434",
       "currency": "RON",
-      "nav": null,
-      "change": null,
-      "month": null,
-      "ytd": null,
-      "year": null
+      "nav": 2088.21,
+      "change": 0.35
     }
   ]
 }
