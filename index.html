@@ -164,4 +164,17 @@ fetch("https://api.open-meteo.com/v1/forecast?latitude=45.6579&longitude=25.6012
 .then(r=>{if(!r.ok)throw 0;return r.json()}).then(w=>{
  document.getElementById("weather").innerHTML=`<div class="grid"><div class="item"><div class="label">Temperatură</div><div class="value">${Math.round(w.current.temperature_2m)}°C</div></div><div class="item"><div class="label">Condiții</div><div class="value">${wc[w.current.weather_code]||"—"}</div></div></div><div class="row"><span>Min / Max</span><strong>${Math.round(w.daily.temperature_2m_min[0])}° / ${Math.round(w.daily.temperature_2m_max[0])}°</strong></div><div class="row"><span>Precipitații</span><strong>${w.daily.precipitation_probability_max[0]}%</strong></div>`;
 }).catch(()=>document.getElementById("weather").innerHTML='<span class="bad">Vremea nu a putut fi încărcată.</span>');
+/* Fonduri ING */
+fetch("./funds.json?ts="+Date.now(), {cache:"no-store"})
+.then(r=>{
+  if(!r.ok) throw 0;
+  return r.json();
+})
+.then(data=>{
+  console.log("Fonduri încărcate:", data);
+})
+.catch(()=>{
+  console.log("funds.json nu a putut fi încărcat");
+});
+    
 </script></body></html>
