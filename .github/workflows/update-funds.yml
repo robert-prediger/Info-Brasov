@@ -1,0 +1,253 @@
+name: Update ING Funds
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    # 20:15 ora României în perioada de vară
+    # Rulează luni-vineri
+    - cron: "15 17 * * 1-5"
+
+permissions:
+  contents: write
+
+jobs:
+  update-funds:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4
+
+      - name: Update funds.json
+        run: |
+          python <<'PY'
+          import json
+          import re
+          import sys
+          from datetime import datetime
+          from pathlib import Path
+
+          import requests
+          from bs4 import BeautifulSoup
+
+          FUNDS = [
+              {
+                  "name": "Romania Equity",
+                  "isin": "LU0345402092",
+                  "url": "https://ycharts.com/mutual_funds/M:LU0345402092/performance/price"
+              },
+              {
+                  "name": "ING Dinamic RON",
+                  "isin": "LU1505916434",
+                  "url": "https://ycharts.com/mutual_funds/M:LU1505916434/performance/price"
+              }
+          ]
+
+          headers = {
+              "User-Agent": (
+                  "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) "
+                  "AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1"
+              ),
+              "Accept-Language": "en-US,en;q=0.9"
+          }
+
+          def parse_number(value):
+              value = value.strip().replace(",", "")
+              return float(value)
+
+          def get_fund(fund):
+              print(f"Checking {fund['isin']}...")
+
+              r = requests.get(
+                  fund["url"],
+                  headers=headers,
+                  timeout=30
+              )
+
+              print("HTTP:", r.status_code)
+
+              if r.status_code != 200:
+                  raise RuntimeError(
+                      f"HTTP {r.status_code} for {fund['isin']}"
+                  )
+
+              soup = BeautifulSoup(r.text, "html.parser")
+              text = soup.get_text(" ", strip=True)
+
+              # Căutăm valoarea NAV din pagina YCharts.
+              patterns = [
+                  r"Price\s+([0-9,]+\.[0-9]+)",
+                  r"Last Value\s+([0-9,]+\.[0-9]+)",
+                  r"Value\s+([0-9,]+\.[0-9]+)"
+              ]
+
+              nav = None
+
+              for pattern in patterns:
+                  m = re.search(pattern, text, re.I)
+                  if m:
+                      candidate = parse_number(m.group(1))
+
+                      # Protecție împotriva unei valori greșite
+                      if 100 < candidate < 10000:
+                          nav = candidate
+                          break
+
+              if nav is None:
+                  raise RuntimeError(
+                      f"NAV not found for {fund['isin']}"
+                  )
+
+              # Căutăm data asociată valorii.
+              date_patterns = [
+                  r"Oct\s+\d{1,2},\s+2026",
+                  r"Sep\s+\d{1,2},\s+2026",
+                  r"Nov\s+\d{1,2},\s+2026",
+                  r"Dec\s+\d{1,2},\s+2026"
+              ]
+
+              nav_date = None
+
+              for pattern in date_patterns:
+                  m = re.search(pattern, text)
+                  if m:
+                      try:
+                          nav_date = datetime.strptime(
+                              m.group(0),
+                              "%b %d, %Y"
+                          ).strftime("%d.%m.%Y")
+                          break
+                      except:
+                          pass
+
+              if not nav_date:
+                  raise RuntimeError(
+                      f"NAV date not found for {fund['isin']}"
+                  )
+
+              print(
+                  f"{fund['isin']} -> {nav:.2f} RON ({nav_date})"
+              )
+
+              return nav, nav_date
+
+
+          path = Path("funds.json")
+
+          if not path.exists():
+              print("funds.json does not exist")
+              sys.exit(1)
+
+          old = json.loads(
+              path.read_text(encoding="utf-8")
+          )
+
+          old_by_isin = {
+              f["isin"]: f
+              for f in old.get("funds", [])
+          }
+
+          results = []
+          dates = []
+
+          # IMPORTANT:
+          # Dacă unul dintre fonduri eșuează,
+          # scriptul se oprește și NU modifică funds.json.
+
+          for fund in FUNDS:
+
+              nav, nav_date = get_fund(fund)
+
+              previous = old_by_isin.get(
+                  fund["isin"],
+                  {}
+              )
+
+              old_nav = previous.get("nav")
+
+              change = 0.0
+
+              if old_nav:
+                  change = (
+                      (nav - float(old_nav))
+                      / float(old_nav)
+                  ) * 100
+
+              results.append({
+                  "name": fund["name"],
+                  "isin": fund["isin"],
+                  "currency": "RON",
+                  "nav": round(nav, 2),
+                  "change": round(change, 2)
+              })
+
+              dates.append(nav_date)
+
+
+          # Ambele fonduri trebuie să aibă aceeași dată.
+          if len(set(dates)) != 1:
+              raise RuntimeError(
+                  f"Different NAV dates returned: {dates}"
+              )
+
+
+          new_data = {
+              "updated": dates[0],
+              "funds": results
+          }
+
+
+          # Dacă NAV-ul este identic cu cel existent,
+          # nu modificăm fișierul.
+
+          old_values = {
+              f["isin"]: f.get("nav")
+              for f in old.get("funds", [])
+          }
+
+          new_values = {
+              f["isin"]: f.get("nav")
+              for f in results
+          }
+
+          if old_values == new_values:
+              print("No new NAV values available.")
+              sys.exit(0)
+
+
+          path.write_text(
+              json.dumps(
+                  new_data,
+                  ensure_ascii=False,
+                  indent=2
+              ) + "\n",
+              encoding="utf-8"
+          )
+
+          print("funds.json updated successfully.")
+
+          PY
+
+      - name: Commit new NAV values
+        run: |
+          if git diff --quiet funds.json; then
+            echo "No new fund values."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add funds.json
+          git commit -m "Update ING fund NAV values"
+          git push
