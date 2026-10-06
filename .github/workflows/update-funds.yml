@@ -1,26 +1,33 @@
-name: Test Goldman Romania Equity
+name: Test Finanzen Romania Equity
 
 on:
   workflow_dispatch:
 
 jobs:
-  test-goldman:
+  test-finanzen:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Test Goldman Sachs
+      - name: Test Finanzen
         run: |
           python <<'PY'
           import urllib.request
           import re
 
-          url = "https://am.gs.com/public-assets/documents/34015a76-44b1-11f1-9232-8fbc893bd354?view=true"
+          url = (
+              "https://www.finanzen.net/fonds/historisch/"
+              "goldman-sachs-romania-equity-x-ron-lu0345402092"
+          )
 
           req = urllib.request.Request(
               url,
               headers={
-                  "User-Agent": "Mozilla/5.0",
-                  "Accept": "*/*"
+                  "User-Agent": (
+                      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/140.0 Safari/537.36"
+                  ),
+                  "Accept-Language": "de-DE,de;q=0.9,en;q=0.8"
               }
           )
 
@@ -33,8 +40,10 @@ jobs:
                   data = response.read()
 
                   print("HTTP STATUS:", response.status)
-                  print("CONTENT TYPE:",
-                        response.headers.get("Content-Type"))
+                  print(
+                      "CONTENT TYPE:",
+                      response.headers.get("Content-Type")
+                  )
                   print("SIZE:", len(data), "bytes")
 
                   text = data.decode(
@@ -47,28 +56,82 @@ jobs:
                       "LU0345402092" in text
                   )
 
-                  values = [
-                      "5026.67",
-                      "5,026.67",
+                  # Valorile pe care le cunoaștem deja.
+                  known = [
+                      "4899,42",
+                      "4.899,42",
+                      "4899.42",
+                      "4,899.42",
                       "5026,67",
-                      "5.026,67"
+                      "5.026,67",
+                      "5026.67",
+                      "5,026.67"
                   ]
 
                   found = [
-                      x for x in values
-                      if x in text
+                      value
+                      for value in known
+                      if value in text
                   ]
 
                   print(
-                      "NAV 5026.67 FOUND:",
-                      found if found else "NO"
+                      "KNOWN NAV VALUES FOUND:",
+                      found if found else "NONE"
+                  )
+
+                  # Căutăm și numere apropiate de NAV-ul
+                  # Romania Equity, ca să vedem formatul paginii.
+                  candidates = re.findall(
+                      r'(?<!\d)'
+                      r'(?:4[7-9]\d{2}|5[0-2]\d{2})'
+                      r'(?:[.,]\d{2})'
+                      r'(?!\d)',
+                      text
+                  )
+
+                  unique = []
+
+                  for value in candidates:
+                      if value not in unique:
+                          unique.append(value)
+
+                  print(
+                      "POSSIBLE NAV VALUES:",
+                      unique[:30]
+                      if unique else "NONE"
+                  )
+
+                  # Căutăm și date din octombrie 2026.
+                  dates = re.findall(
+                      r'(?:0?[1-9]|[12][0-9]|3[01])'
+                      r'[./-]'
+                      r'(?:10|0?10)'
+                      r'[./-]'
+                      r'2026',
+                      text
+                  )
+
+                  unique_dates = []
+
+                  for date in dates:
+                      if date not in unique_dates:
+                          unique_dates.append(date)
+
+                  print(
+                      "DATES FOUND:",
+                      unique_dates[:20]
+                      if unique_dates else "NONE"
                   )
 
                   print()
                   print("TEST FINISHED")
 
           except Exception as e:
-              print("ERROR:", repr(e))
+              print(
+                  "ERROR:",
+                  type(e).__name__,
+                  str(e)
+              )
               raise
 
           PY
