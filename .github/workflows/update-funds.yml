@@ -1,137 +1,403 @@
-name: Test Finanzen Romania Equity
+name: Update ING Funds
 
 on:
   workflow_dispatch:
 
+  schedule:
+    # 18:30 UTC, luni-vineri
+    # aproximativ 20:30 ora României vara
+    - cron: "30 18 * * 1-5"
+
+permissions:
+  contents: write
+
 jobs:
-  test-finanzen:
+  update-funds:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Test Finanzen
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4
+
+      - name: Update ING Dinamic
         run: |
           python <<'PY'
-          import urllib.request
+          import json
           import re
+          import sys
+          from datetime import datetime
+          from pathlib import Path
 
-          url = (
-              "https://www.finanzen.net/fonds/historisch/"
-              "goldman-sachs-romania-equity-x-ron-lu0345402092"
+          import requests
+          from bs4 import BeautifulSoup
+
+
+          FILE = Path("funds.json")
+
+          DINAMIC_ISIN = "LU1505916434"
+
+          URL = (
+              "https://www.investing.com/funds/"
+              "nn-ing-dinamic-x-cap-ron-historical-data"
           )
 
-          req = urllib.request.Request(
-              url,
-              headers={
-                  "User-Agent": (
-                      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                      "AppleWebKit/537.36 (KHTML, like Gecko) "
-                      "Chrome/140.0 Safari/537.36"
-                  ),
-                  "Accept-Language": "de-DE,de;q=0.9,en;q=0.8"
-              }
+          HEADERS = {
+              "User-Agent": (
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                  "AppleWebKit/537.36 (KHTML, like Gecko) "
+                  "Chrome/140.0 Safari/537.36"
+              ),
+              "Accept": (
+                  "text/html,application/xhtml+xml,"
+                  "application/xml;q=0.9,*/*;q=0.8"
+              ),
+              "Accept-Language": "en-US,en;q=0.9",
+          }
+
+
+          # -------------------------------------------------
+          # 1. Load existing funds.json
+          # -------------------------------------------------
+
+          if not FILE.exists():
+              print("ERROR: funds.json does not exist.")
+              sys.exit(1)
+
+          data = json.loads(
+              FILE.read_text(encoding="utf-8")
           )
 
-          try:
-              with urllib.request.urlopen(
-                  req,
-                  timeout=30
-              ) as response:
+          funds = data.get("funds", [])
 
-                  data = response.read()
+          dinamic = next(
+              (
+                  fund
+                  for fund in funds
+                  if fund.get("isin") == DINAMIC_ISIN
+              ),
+              None
+          )
 
-                  print("HTTP STATUS:", response.status)
-                  print(
-                      "CONTENT TYPE:",
-                      response.headers.get("Content-Type")
-                  )
-                  print("SIZE:", len(data), "bytes")
-
-                  text = data.decode(
-                      "utf-8",
-                      errors="ignore"
-                  )
-
-                  print(
-                      "ISIN FOUND:",
-                      "LU0345402092" in text
-                  )
-
-                  # Valorile pe care le cunoaștem deja.
-                  known = [
-                      "4899,42",
-                      "4.899,42",
-                      "4899.42",
-                      "4,899.42",
-                      "5026,67",
-                      "5.026,67",
-                      "5026.67",
-                      "5,026.67"
-                  ]
-
-                  found = [
-                      value
-                      for value in known
-                      if value in text
-                  ]
-
-                  print(
-                      "KNOWN NAV VALUES FOUND:",
-                      found if found else "NONE"
-                  )
-
-                  # Căutăm și numere apropiate de NAV-ul
-                  # Romania Equity, ca să vedem formatul paginii.
-                  candidates = re.findall(
-                      r'(?<!\d)'
-                      r'(?:4[7-9]\d{2}|5[0-2]\d{2})'
-                      r'(?:[.,]\d{2})'
-                      r'(?!\d)',
-                      text
-                  )
-
-                  unique = []
-
-                  for value in candidates:
-                      if value not in unique:
-                          unique.append(value)
-
-                  print(
-                      "POSSIBLE NAV VALUES:",
-                      unique[:30]
-                      if unique else "NONE"
-                  )
-
-                  # Căutăm și date din octombrie 2026.
-                  dates = re.findall(
-                      r'(?:0?[1-9]|[12][0-9]|3[01])'
-                      r'[./-]'
-                      r'(?:10|0?10)'
-                      r'[./-]'
-                      r'2026',
-                      text
-                  )
-
-                  unique_dates = []
-
-                  for date in dates:
-                      if date not in unique_dates:
-                          unique_dates.append(date)
-
-                  print(
-                      "DATES FOUND:",
-                      unique_dates[:20]
-                      if unique_dates else "NONE"
-                  )
-
-                  print()
-                  print("TEST FINISHED")
-
-          except Exception as e:
+          if dinamic is None:
               print(
-                  "ERROR:",
-                  type(e).__name__,
-                  str(e)
+                  "ERROR: ING Dinamic not found "
+                  "in funds.json."
               )
-              raise
+              sys.exit(1)
+
+          old_nav = float(dinamic["nav"])
+
+          print(
+              f"Current stored NAV: {old_nav:.2f}"
+          )
+
+
+          # -------------------------------------------------
+          # 2. Download Investing page
+          # -------------------------------------------------
+
+          response = requests.get(
+              URL,
+              headers=HEADERS,
+              timeout=30
+          )
+
+          print(
+              "Investing HTTP:",
+              response.status_code
+          )
+
+          if response.status_code != 200:
+              print(
+                  "ERROR: Investing did not return HTTP 200."
+              )
+              sys.exit(1)
+
+          html = response.text
+
+          if DINAMIC_ISIN not in html:
+              print(
+                  "ERROR: Expected ISIN was not found."
+              )
+              sys.exit(1)
+
+
+          # -------------------------------------------------
+          # 3. Extract historical NAV rows
+          # -------------------------------------------------
+
+          soup = BeautifulSoup(
+              html,
+              "html.parser"
+          )
+
+          text = soup.get_text(
+              " ",
+              strip=True
+          )
+
+
+          # Investing normally exposes dates in formats such as:
+          # Oct 05, 2026
+          # together with values such as:
+          # 2,106.400
+          #
+          # We inspect blocks around each date.
+
+          date_pattern = re.compile(
+              r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
+              r"\s+\d{1,2},\s+20\d{2}"
+          )
+
+          value_pattern = re.compile(
+              r"\b([12],\d{3}\.\d{2,3})\b"
+          )
+
+          rows = []
+
+          for match in date_pattern.finditer(text):
+
+              date_text = match.group(0)
+
+              start = match.end()
+              end = min(
+                  len(text),
+                  start + 350
+              )
+
+              block = text[start:end]
+
+              values = value_pattern.findall(
+                  block
+              )
+
+              if not values:
+                  continue
+
+              try:
+                  nav = float(
+                      values[0].replace(",", "")
+                  )
+              except ValueError:
+                  continue
+
+
+              # ING Dinamic should be around this range.
+              # This prevents another number from the page
+              # being mistaken for the NAV.
+              if not 1500 < nav < 3000:
+                  continue
+
+              try:
+                  date = datetime.strptime(
+                      date_text,
+                      "%b %d, %Y"
+                  )
+              except ValueError:
+                  continue
+
+              rows.append(
+                  (date, nav)
+              )
+
+
+          # Remove duplicates.
+          unique = {}
+
+          for date, nav in rows:
+              unique[date.date()] = nav
+
+          rows = sorted(
+              [
+                  (
+                      datetime.combine(
+                          date,
+                          datetime.min.time()
+                      ),
+                      nav
+                  )
+                  for date, nav in unique.items()
+              ],
+              key=lambda x: x[0],
+              reverse=True
+          )
+
+
+          if not rows:
+              print(
+                  "ERROR: No valid NAV rows found."
+              )
+              sys.exit(1)
+
+
+          newest_date, newest_nav = rows[0]
+
+          print(
+              "Latest NAV found:",
+              newest_nav
+          )
+
+          print(
+              "Latest NAV date:",
+              newest_date.strftime("%d.%m.%Y")
+          )
+
+
+          # -------------------------------------------------
+          # 4. Safety checks
+          # -------------------------------------------------
+
+          # Reject impossible jumps greater than 20%.
+          difference = abs(
+              (newest_nav - old_nav)
+              / old_nav
+          )
+
+          if difference > 0.20:
+              print(
+                  "ERROR: NAV movement exceeds "
+                  "20%. Update rejected."
+              )
+              sys.exit(1)
+
+
+          # -------------------------------------------------
+          # 5. Determine previous NAV
+          # -------------------------------------------------
+
+          previous_nav = None
+
+          if len(rows) >= 2:
+              previous_nav = rows[1][1]
+
+
+          if previous_nav:
+              change = (
+                  (newest_nav - previous_nav)
+                  / previous_nav
+              ) * 100
+          else:
+              change = (
+                  (newest_nav - old_nav)
+                  / old_nav
+              ) * 100
+
+
+          change = round(
+              change,
+              2
+          )
+
+
+          # -------------------------------------------------
+          # 6. Don't modify anything if NAV hasn't changed
+          # -------------------------------------------------
+
+          if round(newest_nav, 2) == round(old_nav, 2):
+
+              print(
+                  "No new ING Dinamic NAV available."
+              )
+
+              sys.exit(0)
+
+
+          # -------------------------------------------------
+          # 7. Update ONLY ING Dinamic
+          # -------------------------------------------------
+
+          dinamic["nav"] = round(
+              newest_nav,
+              2
+          )
+
+          dinamic["change"] = change
+
+          dinamic["updated"] = (
+              newest_date.strftime(
+                  "%d.%m.%Y"
+              )
+          )
+
+
+          # Preserve Romania Equity exactly as it is.
+          #
+          # Add its own date if it doesn't already have one.
+
+          for fund in funds:
+
+              if (
+                  fund.get("isin")
+                  == "LU0345402092"
+                  and
+                  "updated" not in fund
+              ):
+                  fund["updated"] = (
+                      data.get(
+                          "updated",
+                          "05.10.2026"
+                      )
+                  )
+
+
+          # Keep global updated field for compatibility
+          # with the current Info Brasov page.
+
+          data["updated"] = (
+              newest_date.strftime(
+                  "%d.%m.%Y"
+              )
+          )
+
+
+          FILE.write_text(
+              json.dumps(
+                  data,
+                  ensure_ascii=False,
+                  indent=2
+              ) + "\n",
+              encoding="utf-8"
+          )
+
+
+          print(
+              "ING Dinamic updated successfully."
+          )
+
+          print(
+              f"NAV: {newest_nav:.2f} RON"
+          )
+
+          print(
+              f"Change: {change:+.2f}%"
+          )
 
           PY
+
+
+      - name: Commit updated funds.json
+        run: |
+          if git diff --quiet funds.json; then
+            echo "No new NAV available."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add funds.json
+
+          git commit \
+            -m "Update ING Dinamic NAV"
+
+          git push
