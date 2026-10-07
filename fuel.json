@@ -1,23 +1,23 @@
 {
   "source": "GazOnline",
   "station": "OMV Brasov - Gara, Bd. Garii 7A",
-  "updated": "06.10.2026 01:16",
+  "updated": "07.10.2026 13:53",
   "prices": {
     "super95": 10.17,
     "maxx100": 10.74,
-    "diesel": 10.97,
-    "maxxdiesel": 11.86
+    "diesel": 10.92,
+    "maxxdiesel": 11.81
   },
   "previous": {
     "super95": 10.11,
     "maxx100": 10.68,
     "diesel": 10.97,
-    "maxxdiesel": 11.78
+    "maxxdiesel": 11.86
   },
   "changes": {
     "super95": 0.06,
     "maxx100": 0.06,
-    "diesel": 0.0,
-    "maxxdiesel": 0.08
+    "diesel": -0.05,
+    "maxxdiesel": -0.05
   }
 }
