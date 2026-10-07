@@ -1,22 +1,22 @@
-name: Test Goldman Fund API
+name: Find Goldman Fund API
 
 on:
   workflow_dispatch:
 
 jobs:
-  test-goldman-api:
+  find-goldman-api:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Test Goldman Fund Finder
+      - name: Find Goldman API endpoints
         run: |
           python <<'PY'
           import re
-          import json
           import urllib.request
           import urllib.parse
+          import html as htmlmod
 
-          URL = (
+          PAGE = (
               "https://am.gs.com/ro-ro/individual/funds"
               "?locale=ro-ro"
               "&audience=individual"
@@ -24,276 +24,286 @@ jobs:
               "&filters=currencies%7CRON"
           )
 
-          headers = {
+          HEADERS = {
               "User-Agent": (
                   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                   "AppleWebKit/537.36 (KHTML, like Gecko) "
                   "Chrome/140.0 Safari/537.36"
               ),
-              "Accept": "text/html,application/xhtml+xml",
               "Accept-Language": "ro-RO,ro;q=0.9,en;q=0.8",
           }
 
-          print("=" * 70)
-          print("GOLDMAN SACHS FUND FINDER DIAGNOSTIC")
-          print("=" * 70)
 
-          req = urllib.request.Request(
-              URL,
-              headers=headers
-          )
-
-          with urllib.request.urlopen(
-              req,
-              timeout=30
-          ) as response:
-
-              raw = response.read()
-
-              print("HTTP STATUS:", response.status)
-              print(
-                  "CONTENT TYPE:",
-                  response.headers.get("Content-Type")
+          def download(url):
+              req = urllib.request.Request(
+                  url,
+                  headers=HEADERS
               )
-              print("PAGE SIZE:", len(raw), "bytes")
 
-          html = raw.decode(
-              "utf-8",
-              errors="ignore"
-          )
+              with urllib.request.urlopen(
+                  req,
+                  timeout=30
+              ) as response:
 
-          print()
-          print("Romania Equity ISIN in HTML:",
-                "LU0345402092" in html)
-
-          print("ING Dinamic ISIN in HTML:",
-                "LU1505916434" in html)
-
-
-          # -------------------------------------------------
-          # Search for known current NAV values
-          # -------------------------------------------------
-
-          known_values = [
-              "5026.67",
-              "5,026.67",
-              "5026,67",
-              "5.026,67",
-              "2106.40",
-              "2,106.40",
-              "2106,40",
-              "2.106,40",
-          ]
-
-          found_values = [
-              value
-              for value in known_values
-              if value in html
-          ]
-
-          print(
-              "KNOWN NAV VALUES IN HTML:",
-              found_values if found_values else "NONE"
-          )
-
-
-          # -------------------------------------------------
-          # Search for API / JSON / GraphQL URLs
-          # -------------------------------------------------
-
-          print()
-          print("=" * 70)
-          print("POSSIBLE API / DATA REFERENCES")
-          print("=" * 70)
-
-          patterns = [
-              r'https?://[^"\'>\s]+',
-              r'["\']([^"\']*api[^"\']*)["\']',
-              r'["\']([^"\']*graphql[^"\']*)["\']',
-              r'["\']([^"\']*fund[^"\']*json[^"\']*)["\']',
-              r'["\']([^"\']*search[^"\']*fund[^"\']*)["\']',
-          ]
-
-          candidates = []
-
-          for pattern in patterns:
-              for match in re.findall(
-                  pattern,
-                  html,
-                  flags=re.I
-              ):
-
-                  if isinstance(match, tuple):
-                      value = "".join(match)
-                  else:
-                      value = match
-
-                  value = (
-                      value
-                      .replace("&amp;", "&")
-                      .strip()
+                  return (
+                      response.status,
+                      response.read().decode(
+                          "utf-8",
+                          errors="ignore"
+                      )
                   )
 
-                  lower = value.lower()
 
-                  interesting = any(
-                      keyword in lower
-                      for keyword in [
-                          "api",
-                          "fund",
-                          "graphql",
-                          "product",
-                          "search",
-                          "nav",
-                          "shareclass",
-                          "share-class",
-                      ]
-                  )
-
-                  if (
-                      interesting
-                      and value not in candidates
-                  ):
-                      candidates.append(value)
-
-
-          for i, value in enumerate(
-              candidates[:80],
-              start=1
-          ):
-              print(f"{i:02d}:", value)
-
-
-          if not candidates:
-              print("NONE FOUND")
-
-
-          # -------------------------------------------------
-          # Search JavaScript files
-          # -------------------------------------------------
-
-          print()
           print("=" * 70)
-          print("JAVASCRIPT FILES")
+          print("GOLDMAN FUND API FINDER")
           print("=" * 70)
+
+          status, page = download(PAGE)
+
+          print("PAGE HTTP:", status)
+          print("PAGE SIZE:", len(page))
+
+
+          # ------------------------------------------------
+          # Find JavaScript files
+          # ------------------------------------------------
 
           scripts = re.findall(
               r'<script[^>]+src=["\']([^"\']+)["\']',
-              html,
+              page,
               flags=re.I
           )
 
           scripts = list(
-              dict.fromkeys(scripts)
+              dict.fromkeys(
+                  htmlmod.unescape(x)
+                  for x in scripts
+              )
           )
 
-          print(
-              "SCRIPT COUNT:",
-              len(scripts)
-          )
+          print("JS FILES FOUND:", len(scripts))
+          print()
 
-          base = "https://am.gs.com"
 
-          for i, script in enumerate(
-              scripts[:30],
+          # ------------------------------------------------
+          # Download JS and search for useful references
+          # ------------------------------------------------
+
+          keywords = [
+              "fundfinder",
+              "fundFinder",
+              "fund-search",
+              "fundSearch",
+              "shareclass",
+              "shareClass",
+              "share-class",
+              "isin",
+              "graphql",
+              "/api/",
+              "api.",
+              "nav",
+              "productSearch",
+              "product-search",
+          ]
+
+          all_hits = []
+
+
+          for number, script in enumerate(
+              scripts,
               start=1
           ):
 
-              absolute = urllib.parse.urljoin(
-                  base,
-                  script
-              )
-
-              print(
-                  f"{i:02d}:",
-                  absolute
-              )
-
-
-          # -------------------------------------------------
-          # Inspect JS for useful endpoint references
-          # -------------------------------------------------
-
-          print()
-          print("=" * 70)
-          print("SEARCHING JAVASCRIPT FOR FUND APIs")
-          print("=" * 70)
-
-          endpoint_hits = []
-
-          for script in scripts[:30]:
-
-              absolute = urllib.parse.urljoin(
-                  base,
+              url = urllib.parse.urljoin(
+                  PAGE,
                   script
               )
 
               try:
-                  js_req = urllib.request.Request(
-                      absolute,
-                      headers={
-                          "User-Agent":
-                          headers["User-Agent"]
-                      }
-                  )
-
-                  with urllib.request.urlopen(
-                      js_req,
-                      timeout=20
-                  ) as js_response:
-
-                      js = js_response.read().decode(
-                          "utf-8",
-                          errors="ignore"
-                      )
-
-                  # Look for URLs / paths containing
-                  # useful fund-data terminology.
-
-                  hits = re.findall(
-                      r'["\']([^"\']{3,300}'
-                      r'(?:api|graphql|fund|nav|shareclass|share-class)'
-                      r'[^"\']{0,300})["\']',
-                      js,
-                      flags=re.I
-                  )
-
-                  for hit in hits:
-
-                      hit = hit.strip()
-
-                      if (
-                          hit not in endpoint_hits
-                          and len(hit) < 500
-                      ):
-                          endpoint_hits.append(hit)
+                  js_status, js = download(url)
 
               except Exception as e:
                   print(
-                      "JS READ ERROR:",
-                      absolute,
+                      f"JS {number:02d} ERROR:",
                       type(e).__name__
                   )
+                  continue
 
 
-          print(
-              "ENDPOINT / DATA HITS:",
-              len(endpoint_hits)
-          )
+              lower = js.lower()
 
-          for i, hit in enumerate(
-              endpoint_hits[:100],
-              start=1
-          ):
+              matched = [
+                  keyword
+                  for keyword in keywords
+                  if keyword.lower() in lower
+              ]
+
+              if not matched:
+                  continue
+
+
+              print()
+              print("-" * 70)
               print(
-                  f"{i:03d}:",
-                  hit
+                  f"JS {number:02d}:",
+                  url
               )
+              print(
+                  "HTTP:",
+                  js_status
+              )
+              print(
+                  "SIZE:",
+                  len(js)
+              )
+              print(
+                  "KEYWORDS:",
+                  ", ".join(matched)
+              )
+
+
+              # --------------------------------------------
+              # Extract URLs
+              # --------------------------------------------
+
+              urls = re.findall(
+                  r'https?://[^"\'\\\s<>]+',
+                  js
+              )
+
+              for value in urls:
+
+                  value = (
+                      value
+                      .replace("\\u002F", "/")
+                      .replace("\\/", "/")
+                  )
+
+                  low = value.lower()
+
+                  if any(
+                      word in low
+                      for word in [
+                          "api",
+                          "fund",
+                          "product",
+                          "graphql",
+                          "share",
+                      ]
+                  ):
+
+                      hit = "URL: " + value
+
+                      if hit not in all_hits:
+                          all_hits.append(hit)
+
+
+              # --------------------------------------------
+              # Extract quoted paths / strings
+              # --------------------------------------------
+
+              strings = re.findall(
+                  r'["\']([^"\']{4,350})["\']',
+                  js
+              )
+
+              for value in strings:
+
+                  low = value.lower()
+
+                  if any(
+                      word in low
+                      for word in [
+                          "fundfinder",
+                          "fund-search",
+                          "fundsearch",
+                          "shareclass",
+                          "share-class",
+                          "graphql",
+                          "/api/",
+                          "productsearch",
+                          "product-search",
+                      ]
+                  ):
+
+                      hit = "STRING: " + value
+
+                      if hit not in all_hits:
+                          all_hits.append(hit)
+
+
+              # --------------------------------------------
+              # Show context around ISIN references
+              # --------------------------------------------
+
+              for term in [
+                  "isin",
+                  "fundFinder",
+                  "fundfinder",
+                  "shareClass",
+                  "shareclass",
+                  "graphql",
+              ]:
+
+                  position = lower.find(
+                      term.lower()
+                  )
+
+                  if position >= 0:
+
+                      start = max(
+                          0,
+                          position - 250
+                      )
+
+                      end = min(
+                          len(js),
+                          position + 500
+                      )
+
+                      context = js[start:end]
+
+                      context = re.sub(
+                          r"\s+",
+                          " ",
+                          context
+                      )
+
+                      print()
+                      print(
+                          f"CONTEXT [{term}]:"
+                      )
+                      print(
+                          context[:750]
+                      )
+
+
+          # ------------------------------------------------
+          # Final candidate list
+          # ------------------------------------------------
+
+          print()
+          print()
+          print("=" * 70)
+          print("FINAL API / ENDPOINT CANDIDATES")
+          print("=" * 70)
+
+          if not all_hits:
+              print("NONE")
+
+          else:
+              for i, hit in enumerate(
+                  all_hits[:150],
+                  start=1
+              ):
+                  print(
+                      f"{i:03d}: {hit}"
+                  )
 
 
           print()
           print("=" * 70)
-          print("DIAGNOSTIC FINISHED")
+          print("SEARCH FINISHED")
           print("=" * 70)
 
           PY
