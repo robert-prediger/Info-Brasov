@@ -6,13 +6,13 @@
       "isin": "LU0345402092",
       "currency": "RON",
       "nav": 5026.67,
-      "change": 2.60
+      "change": 2.6
     },
     {
       "name": "ING Dinamic RON",
       "isin": "LU1505916434",
       "currency": "RON",
-      "nav": 2106.40,
+      "nav": 2106.4,
       "change": 0.87
     }
   ]
