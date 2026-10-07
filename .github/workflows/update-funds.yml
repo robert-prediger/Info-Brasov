@@ -2,7 +2,10 @@ name: Update ING Funds
 
 on:
   workflow_dispatch:
-
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/update-funds.yml
   schedule:
     # 21:30 Romania during summer time / 20:30 during winter time
     - cron: "30 18 * * 1-5"
@@ -10,528 +13,157 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: update-ing-funds
+  cancel-in-progress: false
+
 jobs:
   update-funds:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Install Playwright
-        run: |
-          pip install playwright
-          playwright install chromium --with-deps
-
-      - name: Read NAVs from Goldman Sachs
+      - name: Read both NAVs from the official Goldman API
         run: |
           python <<'PY'
+          """Read the public API used by Goldman Sachs Fund Finder; publish both ISINs atomically."""
           import json
-          import re
-          from datetime import datetime
-          from playwright.sync_api import sync_playwright
-
-          URL = (
-              "https://am.gs.com/ro-ro/individual/funds"
-              "?locale=ro-ro"
-              "&audience=individual"
-              "&sf=currencies"
-              "&filters=currencies%7CRON"
-          )
-
-          TARGETS = {
-              "LU0345402092": "Romania Equity",
-              "LU1505916434": "ING Dinamic RON"
-          }
-
-
-          # -------------------------------------------------
-          # Load existing funds.json
-          # -------------------------------------------------
-
-          with open(
-              "funds.json",
-              "r",
-              encoding="utf-8"
-          ) as f:
-              data = json.load(f)
-
-
-          old_by_isin = {
-              fund["isin"]: fund
-              for fund in data["funds"]
-          }
-
-
-          # -------------------------------------------------
-          # Open official Goldman Sachs Fund Finder
-          # -------------------------------------------------
-
-          print("=" * 70)
-          print("GOLDMAN SACHS FUND UPDATE")
-          print("=" * 70)
-          print("Source:", URL)
-          print()
-
-          with sync_playwright() as p:
-
-              browser = p.chromium.launch(
-                  headless=True
-              )
-
-              page = browser.new_page(
-                  viewport={
-                      "width": 1440,
-                      "height": 1200
-                  },
-                  locale="ro-RO"
-              )
-
-              page.goto(
-                  URL,
-                  wait_until="domcontentloaded",
-                  timeout=90000
-              )
-
-              # Wait for dynamic Fund Finder data
-              page.wait_for_timeout(8000)
-
-              try:
-                  page.wait_for_function(
-                      """
-                      () =>
-                          document.body.innerText.includes(
-                              'LU0345402092'
-                          )
-                      """,
-                      timeout=60000
-                  )
-
-              except Exception:
-                  print(
-                      "WARNING: Romania Equity ISIN "
-                      "did not appear during initial wait."
-                  )
-
-              body_text = page.locator(
-                  "body"
-              ).inner_text()
-
-              browser.close()
-
-
-          # -------------------------------------------------
-          # Diagnostic confirmation
-          # -------------------------------------------------
-
-          for isin in TARGETS:
-              print(
-                  isin,
-                  "FOUND"
-                  if isin in body_text
-                  else "NOT FOUND"
-              )
-
-
-          # -------------------------------------------------
-          # Helpers
-          # -------------------------------------------------
-
-          def parse_nav(value):
-
-              value = (
-                  value
-                  .replace("\u00a0", "")
-                  .replace(" ", "")
-              )
-
-              # Examples:
-              # 5,096.54
-              # 2,116.89
-              if "," in value and "." in value:
-
-                  if value.rfind(".") > value.rfind(","):
-                      value = value.replace(",", "")
-
-                  else:
-                      value = (
-                          value
-                          .replace(".", "")
-                          .replace(",", ".")
-                      )
-
-              elif "," in value:
-
-                  parts = value.split(",")
-
-                  if len(parts[-1]) == 2:
-                      value = value.replace(",", ".")
-
-                  else:
-                      value = value.replace(",", "")
-
-              return float(value)
-
-
-          def find_fund_block(isin):
-
-              pos = body_text.find(isin)
-
-              if pos == -1:
-                  return None
-
-              # Grab text around the ISIN.
-              start = max(
-                  0,
-                  pos - 500
-              )
-
-              end = min(
-                  len(body_text),
-                  pos + 1000
-              )
-
-              return body_text[
-                  start:end
-              ]
-
-
-          def extract_nav(block):
-
-              patterns = [
-                  r"NAV\s*[\r\n ]+"
-                  r"([\d.,]+)\s*RON",
-
-                  r"NAV[^\d]{0,100}"
-                  r"([\d.,]+)\s*RON"
-              ]
-
-              for pattern in patterns:
-
-                  match = re.search(
-                      pattern,
-                      block,
-                      re.IGNORECASE
-                  )
-
-                  if match:
-                      return parse_nav(
-                          match.group(1)
-                      )
-
-              return None
-
-
-          def extract_date(block):
-
-              patterns = [
-                  r"NAV\s+la\s+data\s+de"
-                  r"[^\d]{0,20}"
-                  r"(\d{2}\.\d{2}\.\d{4})",
-
-                  r"la\s+data\s+de"
-                  r"[^\d]{0,20}"
-                  r"(\d{2}\.\d{2}\.\d{4})",
-
-                  r"(\d{2}\.\d{2}\.\d{4})"
-              ]
-
-              for pattern in patterns:
-
-                  match = re.search(
-                      pattern,
-                      block,
-                      re.IGNORECASE
-                  )
-
-                  if match:
-                      return match.group(1)
-
-              return None
-
-
-          # -------------------------------------------------
-          # Extract both funds
-          # -------------------------------------------------
-
-          updated_any = False
-          dates = []
-
-          for isin, name in TARGETS.items():
-
-              print()
-              print("-" * 70)
-              print(name)
-              print("ISIN:", isin)
-
-              block = find_fund_block(
-                  isin
-              )
-
-              if not block:
-
-                  print(
-                      "ERROR: Fund not found on "
-                      "Goldman Sachs page."
-                  )
-
-                  print(
-                      "Keeping previous value."
-                  )
-
-                  continue
-
-
-              nav = extract_nav(
-                  block
-              )
-
-              nav_date = extract_date(
-                  block
-              )
-
-
-              print(
-                  "NAV found:",
-                  nav
-              )
-
-              print(
-                  "NAV date:",
-                  nav_date
-              )
-
-
-              if nav is None:
-
-                  print(
-                      "ERROR: Could not extract NAV."
-                  )
-
-                  print(
-                      "Keeping previous value."
-                  )
-
-                  continue
-
-
-              # Safety validation
-              if nav <= 0:
-
-                  print(
-                      "ERROR: Invalid NAV."
-                  )
-
-                  continue
-
-
-              old = old_by_isin.get(
-                  isin
-              )
-
-              if not old:
-
-                  print(
-                      "ERROR: ISIN missing from "
-                      "funds.json."
-                  )
-
-                  continue
-
-
-              old_nav = float(
-                  old["nav"]
-              )
-
-
-              # Prevent accidental bad scrape
-              movement = abs(
-                  nav / old_nav - 1
-              )
-
-              if movement > 0.20:
-
-                  print(
-                      "ERROR: NAV changed by more "
-                      "than 20%."
-                  )
-
-                  print(
-                      "Old:",
-                      old_nav,
-                      "New:",
-                      nav
-                  )
-
-                  print(
-                      "Keeping previous value."
-                  )
-
-                  continue
-
-
-              # -------------------------------------------------
-              # Calculate change from previous stored NAV
-              # -------------------------------------------------
-
-              if old_nav:
-
-                  change = (
-                      (nav / old_nav) - 1
-                  ) * 100
-
-              else:
-                  change = 0
-
-
-              change = round(
-                  change,
-                  2
-              )
-
-
-              print(
-                  "Previous NAV:",
-                  old_nav
-              )
-
-              print(
-                  "Change:",
-                  f"{change:+.2f}%"
-              )
-
-
-              # -------------------------------------------------
-              # Update only when Goldman has a new NAV
-              # -------------------------------------------------
-
-              if round(nav, 2) != round(
-                  old_nav,
-                  2
-              ):
-
-                  old["nav"] = round(
-                      nav,
-                      2
-                  )
-
-                  old["change"] = change
-
-                  if nav_date:
-                      old["updated"] = nav_date
-                      dates.append(nav_date)
-
-                  updated_any = True
-
-                  print(
-                      "UPDATED:",
-                      name
-                  )
-
-              else:
-
-                  print(
-                      "No new NAV."
-                  )
-
-                  if nav_date:
-                      old["updated"] = nav_date
-                      dates.append(nav_date)
-
-
-          # -------------------------------------------------
-          # Global updated date
-          # -------------------------------------------------
-
-          if dates:
-
-              parsed_dates = []
-
-              for d in dates:
-
+          import math
+          import time
+          import urllib.request
+          from datetime import date, datetime
+          from pathlib import Path
+
+          ENDPOINT = 'https://am.gs.com/services/funds'
+          SOURCE = 'https://am.gs.com/ro-ro/individual/funds'
+          TARGETS = {'LU0345402092': 'Romania Equity', 'LU1505916434': 'ING Dinamic RON'}
+          QUERY = '''query getFunds($fundRequest: FundRequest) {
+            fundData(fundRequest: $fundRequest) {
+              funds {
+                fundName
+                shareClasses {
+                  shareClassId
+                  baseCurrency
+                  dailyPerformance {
+                    nav { asAtDate value }
+                    navChange { asAtDate value }
+                  }
+                }
+              }
+            }
+          }'''
+
+
+          def fetch_page(offset):
+              variables = {'fundRequest': {
+                  'country': 'ro', 'language': 'ro', 'audience': 'individual',
+                  'limit': 100, 'offset': offset, 'sortBy': 'FN', 'sortOrder': 'ASC',
+                  'filterParam': {'searchText': ''},
+              }}
+              payload = json.dumps({'query': QUERY, 'variables': variables}).encode()
+              for attempt in range(3):
                   try:
-                      parsed_dates.append(
-                          datetime.strptime(
-                              d,
-                              "%d.%m.%Y"
-                          )
-                      )
-
-                  except ValueError:
-                      pass
-
-
-              if parsed_dates:
-
-                  latest = max(
-                      parsed_dates
-                  )
-
-                  data["updated"] = (
-                      latest.strftime(
-                          "%d.%m.%Y"
-                      )
-                  )
+                      request = urllib.request.Request(ENDPOINT, data=payload, headers={
+                          'Content-Type': 'application/json', 'Accept': 'application/json',
+                          'Referer': SOURCE, 'User-Agent': 'Info-Brasov/1.0',
+                      })
+                      with urllib.request.urlopen(request, timeout=45) as response:
+                          result = json.load(response)
+                      if result.get('errors'):
+                          raise ValueError('Goldman GraphQL errors: ' + json.dumps(result['errors']))
+                      funds = result['data']['fundData']['funds']
+                      if not isinstance(funds, list):
+                          raise ValueError('Invalid Goldman fund list')
+                      return funds
+                  except Exception:
+                      if attempt == 2:
+                          raise
+                      time.sleep(2 ** attempt)
 
 
-          # -------------------------------------------------
-          # Save
-          # -------------------------------------------------
+          def read_official_funds():
+              found = {}
+              # Fund Finder paginates by fund, not by share class.
+              for offset in range(0, 1000, 100):
+                  funds = fetch_page(offset)
+                  for fund in funds:
+                      for share in fund.get('shareClasses') or []:
+                          isin = share.get('shareClassId')
+                          if isin in TARGETS:
+                              if isin in found:
+                                  raise ValueError('Duplicate ISIN: ' + isin)
+                              found[isin] = share
+                  if len(found) == len(TARGETS) or len(funds) < 100:
+                      break
+              missing = set(TARGETS) - set(found)
+              if missing:
+                  raise ValueError('Goldman did not return required ISINs: ' + ', '.join(sorted(missing)))
+              return found
 
-          with open(
-              "funds.json",
-              "w",
-              encoding="utf-8"
-          ) as f:
 
-              json.dump(
-                  data,
-                  f,
-                  ensure_ascii=False,
-                  indent=2
-              )
+          def build_data(old_data, official):
+              old_by_isin = {f['isin']: f for f in old_data['funds']}
+              output = []
+              dates = []
+              for isin, name in TARGETS.items():
+                  share = official[isin]
+                  if share['baseCurrency'] != 'RON':
+                      raise ValueError('Unexpected currency for ' + isin)
+                  perf = share['dailyPerformance']
+                  nav_data, change_data = perf['nav'], perf['navChange']
+                  nav = float(nav_data['value'])
+                  delta = float(change_data['value'])
+                  nav_date = date.fromisoformat(nav_data['asAtDate'])
+                  if change_data['asAtDate'] != nav_data['asAtDate']:
+                      raise ValueError('NAV/change date mismatch for ' + isin)
+                  if not all(math.isfinite(v) for v in (nav, delta)) or nav <= 0 or nav - delta <= 0:
+                      raise ValueError('Invalid NAV for ' + isin)
+                  if nav_date > date.today():
+                      raise ValueError('Future NAV date for ' + isin)
+                  old = old_by_isin[isin]
+                  old_date = datetime.strptime(old.get('updated') or old_data['updated'], '%d.%m.%Y').date()
+                  if nav_date < old_date:
+                      raise ValueError('Refusing older NAV for ' + isin)
+                  if abs(nav / float(old['nav']) - 1) > 0.20:
+                      raise ValueError('NAV movement exceeds 20% for ' + isin)
+                  # Goldman navChange is an amount in RON, not a percentage.
+                  change = round(delta / (nav - delta) * 100, 2)
+                  output.append({**old, 'name': name, 'currency': 'RON', 'nav': round(nav, 2),
+                                 'change': change, 'updated': nav_date.strftime('%d.%m.%Y')})
+                  dates.append(nav_date)
+              return {**old_data, 'updated': min(dates).strftime('%d.%m.%Y'),
+                      'source': 'Goldman Sachs', 'source_url': SOURCE, 'funds': output}
 
-              f.write("\n")
+
+          def main(path=Path('funds.json')):
+              old_data = json.loads(path.read_text(encoding='utf-8'))
+              data = build_data(old_data, read_official_funds())
+              text = json.dumps(data, ensure_ascii=False, indent=2) + '\n'
+              if path.read_text(encoding='utf-8') != text:
+                  temporary = path.with_suffix('.json.tmp')
+                  temporary.write_text(text, encoding='utf-8')
+                  temporary.replace(path)
+              for fund in data['funds']:
+                  print(f"{fund['isin']}: {fund['nav']:.2f} RON | {fund['updated']} | {fund['change']:+.2f}%")
 
 
-          print()
-          print("=" * 70)
-
-          if updated_any:
-              print(
-                  "funds.json updated successfully."
-              )
-
-          else:
-              print(
-                  "No NAV changes detected."
-              )
-
-          print("=" * 70)
-
+          if __name__ == '__main__':
+              main()
           PY
-
-      - name: Show resulting funds.json
-        run: |
-          echo "----- funds.json -----"
-          cat funds.json
-          echo "----------------------"
-
       - name: Commit updated fund data
         run: |
           if git diff --quiet funds.json; then
-            echo "No changes to commit."
+            echo "Both funds verified. No new data to commit."
             exit 0
           fi
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
           git add funds.json
-          git commit -m "Update ING fund NAVs"
-          git push
+          git commit -m "Update ING fund NAVs from Goldman Sachs"
+          git pull --rebase origin main
+          git push origin HEAD:main
