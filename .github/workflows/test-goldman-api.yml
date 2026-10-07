@@ -1,28 +1,22 @@
-name: Find Goldman GraphQL Endpoint
+name: Test Goldman Funds GraphQL
 
 on:
   workflow_dispatch:
 
 jobs:
-  find-endpoint:
+  test-funds-api:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Find GraphQL endpoint
+      - name: Test Goldman funds service
         run: |
           python <<'PY'
-          import re
+          import json
           import urllib.request
-          import urllib.parse
-          import html
+          import urllib.error
 
-          PAGE = (
-              "https://am.gs.com/ro-ro/individual/funds"
-              "?locale=ro-ro"
-              "&audience=individual"
-              "&sf=currencies"
-              "&filters=currencies%7CRON"
-          )
+          BASE = "https://am.gs.com"
+          ENDPOINT = BASE + "/services/funds"
 
           HEADERS = {
               "User-Agent": (
@@ -30,243 +24,242 @@ jobs:
                   "AppleWebKit/537.36 (KHTML, like Gecko) "
                   "Chrome/140.0 Safari/537.36"
               ),
-              "Accept-Language": "ro-RO,ro;q=0.9,en;q=0.8"
+              "Accept": "application/json",
+              "Content-Type": "application/json",
+              "Origin": BASE,
+              "Referer": (
+                  BASE +
+                  "/ro-ro/individual/funds"
+                  "?locale=ro-ro&audience=individual"
+              ),
+              "Accept-Language":
+                  "ro-RO,ro;q=0.9,en;q=0.8"
           }
 
-          def get(url):
-              req = urllib.request.Request(
-                  url,
-                  headers=HEADERS
-              )
-
-              with urllib.request.urlopen(
-                  req,
-                  timeout=30
-              ) as r:
-
-                  return (
-                      r.status,
-                      r.read().decode(
-                          "utf-8",
-                          errors="ignore"
-                      )
-                  )
-
-          print("=" * 70)
-          print("SEARCHING FOR GOLDMAN GRAPHQL ENDPOINT")
-          print("=" * 70)
-
-          status, page = get(PAGE)
-
-          print("PAGE HTTP:", status)
-
-          scripts = re.findall(
-              r'<script[^>]+src=["\']([^"\']+)["\']',
-              page,
-              flags=re.I
-          )
-
-          scripts = list(
-              dict.fromkeys(
-                  html.unescape(x)
-                  for x in scripts
-              )
-          )
-
-          print(
-              "JS FILES:",
-              len(scripts)
-          )
-
-
-          search_terms = [
-              "FUND_SERVICE_GRAPHQL_ENDPOINT",
-              "fund_service_graphql_endpoint",
-              "/graphql",
-              "graphql"
+          ISINS = [
+              "LU0345402092",
+              "LU1505916434"
           ]
 
+          print("=" * 70)
+          print("GOLDMAN SACHS FUND SERVICE TEST")
+          print("=" * 70)
+          print("ENDPOINT:", ENDPOINT)
+          print()
 
-          for number, script in enumerate(
-              scripts,
-              start=1
-          ):
 
-              url = urllib.parse.urljoin(
-                  PAGE,
-                  script
+          def request(method, data=None):
+
+              body = None
+
+              if data is not None:
+                  body = json.dumps(data).encode("utf-8")
+
+              req = urllib.request.Request(
+                  ENDPOINT,
+                  data=body,
+                  headers=HEADERS,
+                  method=method
               )
 
               try:
-                  js_status, js = get(url)
+                  with urllib.request.urlopen(
+                      req,
+                      timeout=30
+                  ) as response:
 
-              except Exception:
-                  continue
+                      raw = response.read()
 
-
-              lower = js.lower()
-
-              if "graphql" not in lower:
-                  continue
-
-
-              print()
-              print("=" * 70)
-              print(
-                  "GRAPHQL JS FILE:",
-                  number
-              )
-              print(
-                  "URL:",
-                  url
-              )
-              print(
-                  "HTTP:",
-                  js_status
-              )
-              print(
-                  "SIZE:",
-                  len(js)
-              )
-
-
-              for term in search_terms:
-
-                  start_search = 0
-
-                  while True:
-
-                      pos = lower.find(
-                          term.lower(),
-                          start_search
-                      )
-
-                      if pos < 0:
-                          break
-
-                      start = max(
-                          0,
-                          pos - 800
-                      )
-
-                      end = min(
-                          len(js),
-                          pos + 1200
-                      )
-
-                      context = js[start:end]
-
-                      context = (
-                          context
-                          .replace("\\u002F", "/")
-                          .replace("\\/", "/")
-                      )
-
-                      print()
                       print(
-                          "----- MATCH:",
-                          term,
-                          "-----"
+                          "HTTP:",
+                          response.status
                       )
 
                       print(
-                          context
-                      )
-
-                      start_search = (
-                          pos + len(term)
-                      )
-
-
-              # --------------------------------------------
-              # Find complete URLs containing graphql
-              # --------------------------------------------
-
-              urls = re.findall(
-                  r'https?://[^"\'\s\\<>]+',
-                  js
-              )
-
-              graphql_urls = []
-
-              for candidate in urls:
-
-                  candidate = (
-                      candidate
-                      .replace("\\u002F", "/")
-                      .replace("\\/", "/")
-                  )
-
-                  if (
-                      "graphql"
-                      in candidate.lower()
-                  ):
-                      if (
-                          candidate
-                          not in graphql_urls
-                      ):
-                          graphql_urls.append(
-                              candidate
+                          "CONTENT TYPE:",
+                          response.headers.get(
+                              "Content-Type"
                           )
-
-
-              if graphql_urls:
-
-                  print()
-                  print(
-                      "GRAPHQL URLS FOUND:"
-                  )
-
-                  for candidate in graphql_urls:
-                      print(
-                          ">>>",
-                          candidate
                       )
 
+                      print(
+                          "SIZE:",
+                          len(raw)
+                      )
 
-          # ------------------------------------------------
-          # Search page itself for configuration values
-          # ------------------------------------------------
+                      text = raw.decode(
+                          "utf-8",
+                          errors="ignore"
+                      )
+
+                      return (
+                          response.status,
+                          text
+                      )
+
+              except urllib.error.HTTPError as e:
+
+                  raw = e.read()
+
+                  text = raw.decode(
+                      "utf-8",
+                      errors="ignore"
+                  )
+
+                  print(
+                      "HTTP ERROR:",
+                      e.code
+                  )
+
+                  print(
+                      "CONTENT TYPE:",
+                      e.headers.get(
+                          "Content-Type"
+                      )
+                  )
+
+                  print(
+                      "SIZE:",
+                      len(raw)
+                  )
+
+                  print(
+                      "RESPONSE:",
+                      text[:3000]
+                  )
+
+                  return (
+                      e.code,
+                      text
+                  )
+
+
+          # ================================================
+          # TEST 1
+          # GET request
+          # ================================================
 
           print()
           print("=" * 70)
-          print("PAGE CONFIG SEARCH")
+          print("TEST 1 - GET")
           print("=" * 70)
 
-          page_lower = page.lower()
+          try:
+              status, text = request("GET")
 
-          for term in search_terms:
-
-              pos = page_lower.find(
-                  term.lower()
+              print(
+                  "BODY:",
+                  text[:3000]
               )
 
-              if pos >= 0:
+          except Exception as e:
+              print(
+                  "GET ERROR:",
+                  type(e).__name__,
+                  str(e)
+              )
 
-                  start = max(
-                      0,
-                      pos - 1000
-                  )
 
-                  end = min(
-                      len(page),
-                      pos + 1500
-                  )
+          # ================================================
+          # TEST 2
+          # Standard GraphQL typename query
+          # ================================================
 
-                  print()
-                  print(
-                      "PAGE MATCH:",
-                      term
-                  )
+          print()
+          print("=" * 70)
+          print("TEST 2 - GRAPHQL TYPENAME")
+          print("=" * 70)
 
-                  print(
-                      page[start:end]
-                  )
+          payload = {
+              "query": """
+                  query {
+                      __typename
+                  }
+              """
+          }
+
+          try:
+              status, text = request(
+                  "POST",
+                  payload
+              )
+
+              print(
+                  "BODY:",
+                  text[:3000]
+              )
+
+          except Exception as e:
+              print(
+                  "GRAPHQL ERROR:",
+                  type(e).__name__,
+                  str(e)
+              )
+
+
+          # ================================================
+          # TEST 3
+          # GraphQL schema query
+          # ================================================
+
+          print()
+          print("=" * 70)
+          print("TEST 3 - GRAPHQL SCHEMA")
+          print("=" * 70)
+
+          payload = {
+              "query": """
+                  query {
+                      __schema {
+                          queryType {
+                              name
+                          }
+                      }
+                  }
+              """
+          }
+
+          try:
+              status, text = request(
+                  "POST",
+                  payload
+              )
+
+              print(
+                  "BODY:",
+                  text[:5000]
+              )
+
+          except Exception as e:
+              print(
+                  "SCHEMA ERROR:",
+                  type(e).__name__,
+                  str(e)
+              )
+
+
+          # ================================================
+          # TEST 4
+          # Search response for our ISINs
+          # ================================================
+
+          print()
+          print("=" * 70)
+          print("ISIN CHECK")
+          print("=" * 70)
+
+          for isin in ISINS:
+              print(
+                  isin,
+                  "FOUND"
+                  if isin in text
+                  else "NOT FOUND"
+              )
 
 
           print()
           print("=" * 70)
-          print("ENDPOINT SEARCH FINISHED")
+          print("TEST FINISHED")
           print("=" * 70)
 
           PY
