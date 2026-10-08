@@ -7,8 +7,9 @@ on:
     paths:
       - .github/workflows/update-funds.yml
   schedule:
-    # 21:30 Romania during summer time / 20:30 during winter time
-    - cron: "30 18 * * 1-5"
+    # UTC envelope for 09:00–17:00 Europe/Bucharest in summer and winter.
+    # The window step below skips the extra hour outside local working hours.
+    - cron: "0 6-15 * * 1-5"
 
 permissions:
   contents: write
@@ -22,13 +23,31 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Check Romania update window
+        id: window
+        run: |
+          python <<'PY'
+          import os
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          now = datetime.now(ZoneInfo("Europe/Bucharest"))
+          active = os.environ["GITHUB_EVENT_NAME"] != "schedule" or (
+              now.weekday() < 5 and 9 <= now.hour <= 17
+          )
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"active={str(active).lower()}\n")
+          print(f"Romania time: {now.isoformat()} | update: {active}")
+          PY
       - name: Checkout repository
+        if: steps.window.outputs.active == 'true'
         uses: actions/checkout@v4
       - name: Set up Python
+        if: steps.window.outputs.active == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Read both NAVs from the official Goldman API
+        if: steps.window.outputs.active == 'true'
         run: |
           python <<'PY'
           """Read the public API used by Goldman Sachs Fund Finder; publish both ISINs atomically."""
@@ -156,6 +175,7 @@ jobs:
               main()
           PY
       - name: Commit updated fund data
+        if: steps.window.outputs.active == 'true'
         run: |
           if git diff --quiet funds.json; then
             echo "Both funds verified. No new data to commit."
