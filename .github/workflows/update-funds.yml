@@ -2,13 +2,17 @@ name: Update ING Funds
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Update OMV fuel prices"]
+    types: [completed]
+    branches: [main]
   push:
     branches: [main]
     paths:
       - .github/workflows/update-funds.yml
   schedule:
     # UTC envelope for 09:00–17:00 Europe/Bucharest in summer and winter.
-    # Skip the early winter slot, but allow delayed scheduled jobs to finish.
+    # Run delayed events regardless of the wall clock at runner startup.
     - cron: "17 6-15 * * 1-5"
 
 permissions:
@@ -22,39 +26,22 @@ concurrency:
 
 jobs:
   update-funds:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Check Romania update window
-        id: window
-        run: |
-          python <<'PY'
-          import os
-          from datetime import datetime
-          from zoneinfo import ZoneInfo
-          now = datetime.now(ZoneInfo("Europe/Bucharest"))
-          active = os.environ["GITHUB_EVENT_NAME"] != "schedule" or (
-              now.hour >= 9
-          )
-          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              output.write(f"active={str(active).lower()}\n")
-          print(f"Romania time: {now.isoformat()} | update: {active}")
-          PY
       - name: Checkout repository
-        if: steps.window.outputs.active == 'true'
         uses: actions/checkout@v4
         with:
           ref: main
       - name: Set up Python
-        if: steps.window.outputs.active == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Read both NAVs from the official Goldman API
-        if: steps.window.outputs.active == 'true'
         run: |
           python <<'PY'
           """Read the public API used by Goldman Sachs Fund Finder; publish both ISINs atomically."""
@@ -62,7 +49,7 @@ jobs:
           import math
           import time
           import urllib.request
-          from datetime import date, datetime
+          from datetime import date, datetime, timezone
           from pathlib import Path
 
           ENDPOINT = 'https://am.gs.com/services/funds'
@@ -169,6 +156,7 @@ jobs:
           def main(path=Path('funds.json')):
               old_data = json.loads(path.read_text(encoding='utf-8'))
               data = build_data(old_data, read_official_funds())
+              data['checked_at'] = datetime.now(timezone.utc).isoformat(timespec='seconds')
               text = json.dumps(data, ensure_ascii=False, indent=2) + '\n'
               if path.read_text(encoding='utf-8') != text:
                   temporary = path.with_suffix('.json.tmp')
@@ -182,7 +170,6 @@ jobs:
               main()
           PY
       - name: Commit updated fund data
-        if: steps.window.outputs.active == 'true'
         run: |
           if git diff --quiet funds.json; then
             echo "Both funds verified. No new data to commit."
@@ -195,19 +182,15 @@ jobs:
           git pull --rebase origin main
           git push origin HEAD:main
       - name: Configure GitHub Pages
-        if: steps.window.outputs.active == 'true'
         uses: actions/configure-pages@v5
       - name: Prepare public site files
-        if: steps.window.outputs.active == 'true'
         run: |
           mkdir -p /tmp/info-brasov-pages
           rsync -a --exclude='.git' --exclude='.github' ./ /tmp/info-brasov-pages/
       - name: Upload GitHub Pages artifact
-        if: steps.window.outputs.active == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: /tmp/info-brasov-pages
       - name: Deploy updated site
         id: deployment
-        if: steps.window.outputs.active == 'true'
         uses: actions/deploy-pages@v4
