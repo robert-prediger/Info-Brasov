@@ -555,7 +555,8 @@ document.getElementById("fueldate").textContent=
 
 /* FONDURI */
 
-fetch(
+function loadFunds(){
+return fetch(
 "./funds.json?ts="+Date.now(),
 {cache:"no-store"}
 )
@@ -644,7 +645,7 @@ ${icon} ${f.name}
 </div>
 
 <div class="fundisin">
-ISIN ${f.isin}
+ISIN ${f.isin} · NAV ${f.updated||data.updated||"—"}
 </div>
 
 <div class="fundvalue">
@@ -664,7 +665,8 @@ ${changeText}
 
 document.getElementById("fundsdate").textContent=
 
-`Sursă: ${data.source||"Goldman Sachs"} • NAV: ${data.updated||"—"} • variație față de precedenta zi de evaluare`;
+`Sursă: ${data.source||"Goldman Sachs"} • NAV: ${data.updated||"—"} • variație față de precedenta zi de evaluare` +
+(data.checked_at ? " • Verificat: " + new Intl.DateTimeFormat("ro-RO", {dateStyle:"short", timeStyle:"short", timeZone:"Europe/Bucharest"}).format(new Date(data.checked_at)) : "");
 
 })
 
@@ -680,6 +682,12 @@ document.getElementById("fundsdate").textContent=
 
 });
 
+
+
+}
+loadFunds();
+setInterval(loadFunds, 5 * 60 * 1000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) loadFunds(); });
 
 /* VREME */
 
