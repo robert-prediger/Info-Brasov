@@ -13,7 +13,7 @@ on:
   schedule:
     # UTC envelope for 09:00–17:00 Europe/Bucharest in summer and winter.
     # Run delayed events regardless of the wall clock at runner startup.
-    - cron: "17 6-15 * * 1-5"
+    - cron: "0 6-15 * * 1-5"
 
 permissions:
   contents: write
