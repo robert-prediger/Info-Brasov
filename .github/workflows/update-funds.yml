@@ -11,9 +11,9 @@ on:
     paths:
       - .github/workflows/update-funds.yml
   schedule:
-    # UTC envelope for 09:00–17:00 Europe/Bucharest in summer and winter.
+    # Check for newly published NAVs at the start of every hour, every day.
     # Run delayed events regardless of the wall clock at runner startup.
-    - cron: "0 6-15 * * 1-5"
+    - cron: "0 * * * *"
 
 permissions:
   contents: write
