@@ -14,6 +14,8 @@ on:
     # Check for newly published NAVs at the start of every hour, every day.
     # Run delayed events regardless of the wall clock at runner startup.
     - cron: "0 * * * *"
+    # Backup trigger away from the busy start of the hour.
+    - cron: "37 * * * *"
 
 permissions:
   contents: write
