@@ -3,14 +3,21 @@ name: Update OMV fuel prices
 on:
   schedule:
     - cron: "15 * * * *"
+    # Independent backup if the primary scheduled event is dropped.
+    - cron: "47 * * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: update-omv-fuel
+  cancel-in-progress: false
+
 jobs:
   update:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
@@ -319,5 +326,6 @@ jobs:
             echo "No fuel price changes."
           else
             git commit -m "Update OMV Gara fuel prices"
+            git pull --rebase origin main
             git push
           fi
