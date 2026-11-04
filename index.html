@@ -466,7 +466,8 @@ document.getElementById("fx").innerHTML=
 
 /* CARBURANȚI */
 
-fetch(
+function loadFuel(){
+return fetch(
 "./fuel.json?ts="+Date.now(),
 {cache:"no-store"}
 )
@@ -475,6 +476,7 @@ fetch(
 
 .then(f=>{
 
+document.getElementById("fuelpill").textContent="ACTUALIZAT";
 const p=f.prices||{};
 const ch=f.changes||{};
 
@@ -550,7 +552,14 @@ document.getElementById("fueldate").textContent=
 
 })
 
-.catch(()=>{});
+.catch(()=>{
+document.getElementById("fuelpill").textContent="EROARE";
+document.getElementById("fueldate").textContent="Carburanții nu au putut fi verificați. Reîncercare automată în 5 minute.";
+});
+}
+loadFuel();
+setInterval(loadFuel, 5 * 60 * 1000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) loadFuel(); });
 
 
 /* FONDURI */
