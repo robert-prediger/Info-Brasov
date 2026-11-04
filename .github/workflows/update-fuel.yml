@@ -6,6 +6,10 @@ on:
     # Independent backup if the primary scheduled event is dropped.
     - cron: "47 * * * *"
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/update-fuel.yml
 
 permissions:
   contents: write
