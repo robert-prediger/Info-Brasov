@@ -674,8 +674,14 @@ ${changeText}
 
 document.getElementById("fundsdate").textContent=
 
-`Sursă: ${data.source||"Goldman Sachs"} • NAV: ${data.updated||"—"} • variație față de precedenta zi de evaluare` +
+`Sursă: ${data.source||"Goldman Sachs"} • Data NAV este indicată separat pentru fiecare fond • variație față de precedenta zi de evaluare` +
 (data.checked_at ? " • Verificat: " + new Intl.DateTimeFormat("ro-RO", {dateStyle:"short", timeStyle:"short", timeZone:"Europe/Bucharest"}).format(new Date(data.checked_at)) : "");
+
+const lastCheck = Date.parse(data.checked_at);
+const delayed = !Number.isFinite(lastCheck) || Date.now() - lastCheck > 3 * 60 * 60 * 1000;
+document.getElementById("fundsdate").classList.toggle("bad", delayed);
+if (delayed) document.getElementById("fundsdate").textContent += " • Verificarea automată întârzie; valorile afișate sunt ultimele confirmate.";
+
 
 })
 
