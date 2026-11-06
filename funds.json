@@ -1,5 +1,5 @@
 {
-  "updated": "04.11.2026",
+  "updated": "05.11.2026",
   "funds": [
     {
       "name": "Romania Equity",
@@ -13,12 +13,12 @@
       "name": "ING Dinamic RON",
       "isin": "LU1505916434",
       "currency": "RON",
-      "nav": 2133.57,
-      "change": 0.7,
-      "updated": "04.11.2026"
+      "nav": 2136.95,
+      "change": 0.16,
+      "updated": "05.11.2026"
     }
   ],
   "source": "Goldman Sachs",
   "source_url": "https://am.gs.com/ro-ro/individual/funds",
-  "checked_at": "2026-11-06T15:57:50+00:00"
+  "checked_at": "2026-11-06T21:00:44+00:00"
 }
