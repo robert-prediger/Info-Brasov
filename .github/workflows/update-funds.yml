@@ -10,6 +10,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/update-funds.yml
+      - funds.json
   schedule:
     # Check for newly published NAVs at the start of every hour, every day.
     # Run delayed events regardless of the wall clock at runner startup.
