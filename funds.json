@@ -13,12 +13,12 @@
       "name": "ING Dinamic RON",
       "isin": "LU1505916434",
       "currency": "RON",
-      "nav": 2122.08,
-      "change": 0.34,
-      "updated": "09.11.2026"
+      "nav": 2136.65,
+      "change": 0.69,
+      "updated": "10.11.2026"
     }
   ],
   "source": "Goldman Sachs",
   "source_url": "https://am.gs.com/ro-ro/individual/funds",
-  "checked_at": "2026-11-11T06:33:16+00:00"
+  "checked_at": "2026-11-11T08:16:36+00:00"
 }
