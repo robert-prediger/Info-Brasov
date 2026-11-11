@@ -155,9 +155,62 @@ jobs:
                       'source': 'Goldman Sachs', 'source_url': SOURCE, 'funds': output}
 
 
+          def read_finanzen_romania():
+              # Goldman GraphQL can lag behind the latest published NAV for this share class.
+              # Finanzen.net displays the same ISIN with a dated NAV sourced from Morningstar/SIX.
+              import re
+              url = 'https://www.finanzen.net/fonds/historisch/goldman-sachs-romania-equity-x-ron-lu0345402092'
+              request = urllib.request.Request(url, headers={
+                  'User-Agent': 'Mozilla/5.0 (compatible; Info-Brasov/1.0)',
+                  'Accept-Language': 'de-DE,de;q=0.9',
+              })
+              with urllib.request.urlopen(request, timeout=45) as response:
+                  page = response.read().decode('utf-8', errors='replace')
+              if 'LU0345402092' not in page:
+                  raise ValueError('Finanzen.net page does not identify the expected ISIN')
+              quote = re.search(
+                  r'([0-9.]+,[0-9]{2})\\s*RON\\s*([+-]?[0-9.]+,[0-9]{2})\\s*RON\\s*([+-]?[0-9.]+,[0-9]{2})\\s*%',
+                  page
+              )
+              date_match = re.search(r'([0-3][0-9]\\.[01][0-9]\\.[0-9]{2})\\s*</', page)
+              if not quote or not date_match:
+                  raise ValueError('Could not parse dated Romania Equity NAV from Finanzen.net')
+
+              def number(value):
+                  return float(value.replace('.', '').replace(',', '.'))
+
+              nav = number(quote.group(1))
+              change_pct = number(quote.group(3))
+              nav_date = datetime.strptime(date_match.group(1), '%d.%m.%y').date()
+              if not math.isfinite(nav) or nav <= 0 or not math.isfinite(change_pct):
+                  raise ValueError('Invalid Finanzen.net Romania Equity quote')
+              return nav, change_pct, nav_date
+
+
+          def apply_newer_romania_quote(data):
+              nav, change_pct, nav_date = read_finanzen_romania()
+              fund = next(f for f in data['funds'] if f['isin'] == 'LU0345402092')
+              current_date = datetime.strptime(fund['updated'], '%d.%m.%Y').date()
+              if nav_date > current_date:
+                  fund['nav'] = round(nav, 2)
+                  fund['change'] = round(change_pct, 2)
+                  fund['updated'] = nav_date.strftime('%d.%m.%Y')
+                  fund['data_source'] = 'Finanzen.net (Morningstar/SIX)'
+                  dates = [datetime.strptime(f['updated'], '%d.%m.%Y').date() for f in data['funds']]
+                  data['updated'] = min(dates).strftime('%d.%m.%Y')
+                  print(f"Romania Equity updated from Finanzen.net: {nav:.2f} RON | {nav_date}")
+              else:
+                  print(f"Finanzen.net Romania Equity has no newer NAV ({nav_date}); keeping verified value")
+
+
           def main(path=Path('funds.json')):
               old_data = json.loads(path.read_text(encoding='utf-8'))
               data = build_data(old_data, read_official_funds())
+              try:
+                  apply_newer_romania_quote(data)
+              except Exception as exc:
+                  # Keep the official Goldman value if the independent cross-check is unavailable.
+                  print(f'Finanzen.net fallback unavailable: {exc}')
               data['checked_at'] = datetime.now(timezone.utc).isoformat(timespec='seconds')
               text = json.dumps(data, ensure_ascii=False, indent=2) + '\n'
               if path.read_text(encoding='utf-8') != text:
