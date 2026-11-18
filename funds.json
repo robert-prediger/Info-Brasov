@@ -5,9 +5,9 @@
       "name": "Romania Equity",
       "isin": "LU0345402092",
       "currency": "RON",
-      "nav": 5189.03,
-      "change": 0.5,
-      "updated": "16.11.2026",
+      "nav": 5144.38,
+      "change": -0.86,
+      "updated": "17.11.2026",
       "data_source": "Finanzen.net (Morningstar/SIX)"
     },
     {
@@ -21,5 +21,5 @@
   ],
   "source": "Goldman Sachs",
   "source_url": "https://am.gs.com/ro-ro/individual/funds",
-  "checked_at": "2026-11-18T04:40:01+00:00"
+  "checked_at": "2026-11-18T09:57:58+00:00"
 }
